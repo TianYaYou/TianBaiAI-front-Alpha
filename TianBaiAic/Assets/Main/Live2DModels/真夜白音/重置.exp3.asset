@@ -1,0 +1,108 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58229d41c24a7fb4aafd097ab43bcc2a, type: 3}
+  m_Name: "\u91CD\u7F6E.exp3"
+  m_EditorClassIdentifier: 
+  Type: Live2D Expression
+  FadeInTime: 1
+  FadeOutTime: 1
+  Parameters:
+  - Id: Param
+    Value: 0
+    Blend: 1
+  - Id: Param236
+    Value: 0
+    Blend: 1
+  - Id: Param238
+    Value: 0
+    Blend: 1
+  - Id: Param252
+    Value: 0
+    Blend: 1
+  - Id: Param235
+    Value: 0
+    Blend: 1
+  - Id: Param237
+    Value: 0
+    Blend: 1
+  - Id: Param251
+    Value: 0
+    Blend: 1
+  - Id: Param_Angle_Rotation_1_ArtMesh572
+    Value: 0
+    Blend: 1
+  - Id: Param232
+    Value: 0
+    Blend: 1
+  - Id: Param218
+    Value: 0
+    Blend: 1
+  - Id: Param233
+    Value: 1
+    Blend: 1
+  - Id: Param234
+    Value: 0
+    Blend: 1
+  - Id: Param37
+    Value: 0
+    Blend: 1
+  - Id: Param39
+    Value: 0
+    Blend: 1
+  - Id: Param38
+    Value: 0
+    Blend: 1
+  - Id: Param40
+    Value: 0
+    Blend: 1
+  - Id: Param194
+    Value: 0
+    Blend: 1
+  - Id: Param219
+    Value: 0
+    Blend: 1
+  - Id: Param196
+    Value: 0
+    Blend: 1
+  - Id: Param197
+    Value: 0
+    Blend: 1
+  - Id: Param210
+    Value: 0
+    Blend: 1
+  - Id: Param198
+    Value: 0
+    Blend: 1
+  - Id: Param199
+    Value: 0
+    Blend: 1
+  - Id: Param211
+    Value: 0
+    Blend: 1
+  - Id: Param212
+    Value: 0
+    Blend: 1
+  - Id: Param217
+    Value: 0
+    Blend: 1
+  - Id: Param213
+    Value: 0
+    Blend: 1
+  - Id: Param214
+    Value: 0
+    Blend: 1
+  - Id: Param215
+    Value: 0
+    Blend: 1
+  - Id: Param216
+    Value: 0
+    Blend: 1

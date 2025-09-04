@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58229d41c24a7fb4aafd097ab43bcc2a, type: 3}
+  m_Name: "\u661F\u661F\u773C.exp3"
+  m_EditorClassIdentifier: 
+  Type: Live2D Expression
+  FadeInTime: 1
+  FadeOutTime: 1
+  Parameters:
+  - Id: Param194
+    Value: 1
+    Blend: 1
+  - Id: Param219
+    Value: 1
+    Blend: 1
+  - Id: ParamBrowLForm7
+    Value: 0.7200779
+    Blend: 1
+  - Id: ParamBrowLForm9
+    Value: 0.6025799
+    Blend: 1
+  - Id: ParamBrowLForm8
+    Value: 0.15677842
+    Blend: 1
+  - Id: ParamBrowLForm10
+    Value: 0.5680218
+    Blend: 1
+  - Id: ParamBrowLForm11
+    Value: 0.7602816
+    Blend: 1
+  - Id: ParamBrowLForm12
+    Value: 0.8086637
+    Blend: 1
+  - Id: Param195
+    Value: 1
+    Blend: 1
