@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Networking;
 using System.Collections;
 using Newtonsoft.Json;
@@ -330,8 +330,8 @@ public class ControlMessage : WebApiMessageInfo
             case "SetTransparent":
                 // 控制透明窗口
 #if !UNITY_EDITOR
-                if (control_value == 0) TransparentSetup.SetTransparent(false);
-                else if (control_value == 1) TransparentSetup.SetTransparent(true);
+                //if (control_value == 0) TransparentSetup.SetTransparent(false);
+                //else if (control_value == 1) TransparentSetup.SetTransparent(true);
 #endif
 #if UNITY_EDITOR
                 Debug.Log("编辑器模式下不支持透明窗口");
@@ -340,8 +340,8 @@ public class ControlMessage : WebApiMessageInfo
             case "SetClickable":
                 // 控制是否可点击
 #if !UNITY_EDITOR
-                if (control_value == 0) TransparentSetup.SetClickable(false);
-                else if (control_value == 1) TransparentSetup.SetClickable(true);
+                //if (control_value == 0) TransparentSetup.SetClickable(false);
+                //else if (control_value == 1) TransparentSetup.SetClickable(true);
 #endif
 #if UNITY_EDITOR
                 Debug.Log("编辑器模式下不支持点击穿透");

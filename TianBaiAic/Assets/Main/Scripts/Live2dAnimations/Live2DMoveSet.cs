@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -32,9 +32,10 @@ public class Live2DMoveSet : MonoBehaviour
             {
                 targetScale += new Vector3(scroll, scroll, 0); // 更新目标缩放
             }
-            
-            if(Input.GetMouseButtonUp(0))  //当鼠标抬起时
+
+            if (!Input.GetMouseButton(0))  //当鼠标抬起时
             {
+                Camera.main.GetComponent<TransparentSetup>().StopDragging();
                 isMoving = false; // 停止移动
             }
         }
@@ -43,7 +44,17 @@ public class Live2DMoveSet : MonoBehaviour
             //当鼠标点击自己碰撞箱时
             if (Input.GetMouseButtonDown(0))
             {
-                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                Vector2 clickPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                Collider2D collider2d = GetComponent<Collider2D>();
+                collider2d = Physics2D.OverlapPoint(clickPos);
+                if (collider2d != null && collider2d.transform == transform)
+                {
+                    Camera.main.GetComponent<TransparentSetup>().StartDragging();
+                    isMoving = true; // 开始移动
+                }
+
+
+                /*Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
                 RaycastHit hit;
                 if (Physics.Raycast(ray, out hit))
                 {
@@ -51,7 +62,7 @@ public class Live2DMoveSet : MonoBehaviour
                     {
                         isMoving = true; // 开始移动
                     }
-                }
+                }*/
             }
         }
         if (Input.GetKey(KeyCode.LeftAlt))

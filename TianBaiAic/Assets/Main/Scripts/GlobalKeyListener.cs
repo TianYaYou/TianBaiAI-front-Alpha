@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -12,10 +12,10 @@ public class GlobalKeyListener : MonoBehaviour
     private static LowLevelKeyboardProc proc = HookCallback;
     private static Thread hookThread;
 
-    // Ó³ÉäĞéÄâ¼üÂëµ½ Unity µÄ KeyCode
+    // æ˜ å°„è™šæ‹Ÿé”®ç åˆ° Unity çš„ KeyCode
     private static readonly Dictionary<int, KeyCode> vkCodeToKeyCode = new()
     {
-#region Ó³Éä
+#region æ˜ å°„
         { 0x08, KeyCode.Backspace },
         { 0x09, KeyCode.Tab },
         { 0x0D, KeyCode.Return },
@@ -131,7 +131,7 @@ public class GlobalKeyListener : MonoBehaviour
                 return;
             }
 
-            // ÏûÏ¢Ñ­»·±£³Ö¹³×Ó»îÔ¾
+            // æ¶ˆæ¯å¾ªç¯ä¿æŒé’©å­æ´»è·ƒ
             MSG msg;
             while (GetMessage(out msg, IntPtr.Zero, 0, 0)) { }
         });
@@ -157,7 +157,7 @@ public class GlobalKeyListener : MonoBehaviour
         }
         if (hookThread != null && hookThread.IsAlive)
         {
-            hookThread.Abort(); // Ç¿ÖÆÖÕÖ¹Ïß³Ì£¬¸ü°²È«µÄ·½·¨ÊÇ·¢ËÍÏûÏ¢ÈÃÏß³Ì×ÔĞĞÍË³ö
+            hookThread.Abort(); // å¼ºåˆ¶ç»ˆæ­¢çº¿ç¨‹ï¼Œæ›´å®‰å…¨çš„æ–¹æ³•æ˜¯å‘é€æ¶ˆæ¯è®©çº¿ç¨‹è‡ªè¡Œé€€å‡º
             hookThread = null;
         }
         GlobalInput.Reset();
@@ -274,13 +274,13 @@ public static class GlobalInput
             _pressedKeys.Remove(key);
     }
 
-    // ÔÚÃ¿Ò»Ö¡¿ªÊ¼Ê±µ÷ÓÃ£¬ÒÔÇå³ı _downBuffer
+    // åœ¨æ¯ä¸€å¸§å¼€å§‹æ—¶è°ƒç”¨ï¼Œä»¥æ¸…é™¤ _downBuffer
     public static void ResetDownBuffer()
     {
         _downBuffer.Clear();
     }
 
-    // ¿ÉÑ¡£ºÇåÀíËùÓĞ°´¼ü×´Ì¬£¨¿ÉÔÚ³ÌĞòÔİÍ£»òÍË³öÊ±µ÷ÓÃ£¬OnDisable ÖĞÒÑµ÷ÓÃ£©
+    // å¯é€‰ï¼šæ¸…ç†æ‰€æœ‰æŒ‰é”®çŠ¶æ€ï¼ˆå¯åœ¨ç¨‹åºæš‚åœæˆ–é€€å‡ºæ—¶è°ƒç”¨ï¼ŒOnDisable ä¸­å·²è°ƒç”¨ï¼‰
     public static void Reset()
     {
         _pressedKeys.Clear();
@@ -288,7 +288,7 @@ public static class GlobalInput
     }
 }
 
-// ÄãĞèÒªÔÚ Unity µÄÒ»¸ö½Å±¾ÖĞÃ¿Ò»Ö¡µ÷ÓÃ GlobalInput.ResetDownBuffer()
+// ä½ éœ€è¦åœ¨ Unity çš„ä¸€ä¸ªè„šæœ¬ä¸­æ¯ä¸€å¸§è°ƒç”¨ GlobalInput.ResetDownBuffer()
 public class GlobalInputFrameResetter : MonoBehaviour
 {
     void Update()

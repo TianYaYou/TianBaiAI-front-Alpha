@@ -1,153 +1,341 @@
-using System;
+ï»¿using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityRawInput;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine.XR;
 
 public class TransparentSetup : MonoBehaviour
 {
-#if !UNITY_EDITOR
-    public static TransparentSetup Instance;
-
-    private uint originalStyle;
-    private uint originalExStyle;
-    private IntPtr hWnd = IntPtr.Zero; // ĞŞ¸´£º³õÊ¼»¯×Ö¶Î hWnd
-
-
-    public void RestoreWindow()  // »Ö¸´´°¿Ú
-    {
-        if (hWnd == IntPtr.Zero) return;
-
-        // ½ûÖ¹µã»÷
-        SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle);
-    }
-
-    void OnApplicationQuit()
-    {
-        RestoreWindow();
-    }
-
-    void OnDestroy()
-    {
-        RestoreWindow();
-    }
-
-    #region Windows API
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetCapture(IntPtr hWnd);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr GetActiveWindow();
+    public static extern bool ReleaseCapture();
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
+    [DllImport("user32.dll")]
+    public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLongPtrA(IntPtr hWnd, int nIndex, uint dwNewLong);
+
+    [DllImport("user32.dll")]
+    static extern int GetWindowLongPtrA(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    static extern int SetLayeredWindowAttributes(IntPtr hwnd, int crKey, int bAlpha, int dwFlags);
+
+    [DllImport("Dwmapi.dll")]
+    static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
+
+    public struct MARGINS
+    {
+        public int cxLeftWidth;
+        public int cxRightWidth;
+        public int cyTopHeight;
+        public int cyBottomHeight;
+    }
+
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    // setWindowPos å¸¸é‡
+    private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint TOPMOST_FLAGS = SWP_NOMOVE | SWP_NOSIZE;
+
+    // sendMessageç”¨äºæ‹–åŠ¨çª—å£çš„å¸¸é‡
+    const int WM_SYSCOMMAND = 0x112;
+    const int WM_NCLBUTTONDOWN = 0x00A1;
+    const int SC_MOVE = 0xF010;
+    const int HTCAPTION = 0x0002;
+
+    // çª—å£é£æ ¼è®¾ç½®å¸¸é‡
     private const int GWL_EXSTYLE = -20;
-    private const uint WS_EX_LAYERED = 0x00080000;
-    private const uint WS_EX_TRANSPARENT = 0x00000020;
-    private const uint LWA_COLORKEY = 0x00000001;
-    private const uint LWA_ALPHA = 0x00000002;
+    private const int GWL_STYLE = -16;
+    private const int WS_EX_LAYERED = 0x00080000;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_BORDER = 0x00800000;
+    private const int WS_CAPTION = 0x00C00000;
+    private const int LWA_COLORKEY = 0x00000001;
+    private const int LWA_ALPHA = 0x00000002;
+    private const int WS_EX_TRANSPARENT = 0x20;
 
-    #endregion
+    // çª—å£æ‹–æ”¾æ–‡ä»¶è®¾ç½®
+    private const int WS_EX_ACCEPTFILES = 0x00000010;
 
-    bool ableToClick = true; // ÊÇ·ñÔÊĞíµã»÷
+    // è¿‡ç¨‹å‚æ•°
+    private bool isDragging = false;
+    private int sendResult = 0;
+    private Vector2 initialMousePosition;
+    private Vector2 initialWindowPosition;
+    private IntPtr hwnd;
+
     void Start()
     {
-        hWnd = GetActiveWindow(); // Ê¹ÓÃ×Ö¶Î hWnd£¬¶ø²»ÊÇÉùÃ÷ĞÂµÄ¾Ö²¿±äÁ¿
-        originalStyle = GetWindowLong(hWnd, -16);       // GWL_STYLE
-        originalExStyle = GetWindowLong(hWnd, -20);     // GWL_EXSTYLE
-
-        //RawInput.Start();
-        //RawInput.WorkInBackground = true;
-
-        // »ñÈ¡Ô­À©Õ¹ÑùÊ½
-        var exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
-
-        Instance = this;
-
-        // ÉèÖÃ´°¿ÚÎªÍ¸Ã÷ + µã»÷´©Í¸
-        //SetWindowLong(hWnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
-
-
-    }
-    public static void SetTransparent(bool isTransparent)
-    {
-        if (isTransparent)
+        Application.runInBackground = true;
+        hwnd = FindWindow(null, Application.productName); // ä½¿ç”¨åº”ç”¨ç¨‹åºåç§°è·å–çª—å£å¥æŸ„
+        if (hwnd == IntPtr.Zero)
         {
-            // ÉèÖÃ´°¿ÚÎªÍ¸Ã÷ + µã»÷´©Í¸
-            SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+            // Debug.LogError("çª—å£å¥æŸ„æœªæ‰¾åˆ°");
+            return;
         }
-        else
-        {
-            // »Ö¸´´°¿Ú
-            SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle);
-        }
-    }
+        //int width = Screen.resolutions[Screen.resolutions.Length - 1].width / 5;
+        //int height = Screen.resolutions[Screen.resolutions.Length - 1].height / 5;
+        //Screen.SetResolution(width, height, false);
+#if !UNITY_EDITOR
 
-    public static void SetClickable(bool isClickable)
-    {
-        if (isClickable)
-        {
-            // ÔÊĞíµã»÷
-            SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
-        }
-        else
-        {
-            // ½ûÖ¹µã»÷
-            SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle);
-        }
+        // çª—å£ç½®é¡¶
+        SetWindowPos(hwnd, HWND_TOPMOST, Screen.mainWindowPosition.x, Screen.mainWindowPosition.y, Screen.width, Screen.height, TOPMOST_FLAGS);
+        // Debug.Log("Window Handle: " + hwnd);
+
+        // è®¾ç½®ä¸ºé€æ˜ã€æ— è¾¹æ¡†
+        int intExTemp = GetWindowLongPtrA(hwnd, GWL_EXSTYLE);
+        int intTemp = GetWindowLongPtrA(hwnd, GWL_STYLE);
+        SetWindowLongPtrA(hwnd, GWL_EXSTYLE, (uint)intExTemp | WS_EX_LAYERED | WS_EX_ACCEPTFILES /*| WS_EX_TOOLWINDOW*/); 
+        SetWindowLongPtrA(hwnd, GWL_STYLE, (uint)(intTemp & ~WS_BORDER & ~WS_CAPTION));
+
+        // å…¨å±æ¨¡å¼ä¸‹æ‰©å±•çª—å£åˆ°å®¢æˆ·ç«¯åŒºåŸŸ -> ä¸ºäº†é€æ˜
+Â  Â  Â  Â  var margins = new MARGINS() { cxLeftWidth = -1 };Â // è¾¹è·å†…åµŒå€¼ç¡®å®šåœ¨çª—å£å››ä¾§æ‰©å±•æ¡†æ¶çš„è·ç¦» -1ä¸ºæ²¡æœ‰çª—å£è¾¹æ¡†
+Â  Â  Â  Â  DwmExtendFrameIntoClientArea(hwnd, ref margins);
+
+        SetLayeredWindowAttributes(hwnd, 0x010101, 255, LWA_COLORKEY);
+#endif
     }
 
-    private void Update()
+    // ä»¥ä¸‹ä»£ç åœ¨å°çª—æ¨¡å¼ä¸‹ä½¿ç”¨Win32 apiç§»åŠ¨çª—å£
+    void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Tab) || RawInput.IsKeyDown(RawKey.Tab))
+        //if (Input.GetMouseButton(0) && !isDragging)
+        //{
+        //    StartDragging();
+        //}
+        //else if (!Input.GetMouseButton(0) && isDragging)
+        //{
+        //    StopDragging();
+        //}
+
+        //if (isDragging)
+        //{
+        //    DragWindowToMousePosition();
+        //}
+    }
+
+    public void StartDragging()
+    {
+        isDragging = true;
+        initialMousePosition = GetMousePosition();
+        //initialWindowPosition = new Vector2(Screen.mainWindowPosition.x + Screen.width / 2f, Screen.mainWindowPosition.y + Screen.height / 2f); // åˆå§‹çª—å£ä½ç½®ï¼Œå¯æ ¹æ®éœ€è¦è°ƒæ•´
+        initialWindowPosition = new Vector2(Screen.mainWindowPosition.x, Screen.mainWindowPosition.y);
+        ReleaseCapture();
+
+    }
+
+    public void StopDragging()
+    {
+        isDragging = false;
+
+    }
+
+    void DragWindowToMousePosition()
+    {
+        Vector2 currentMousePosition = GetMousePosition();
+        Vector2 delta = currentMousePosition - initialMousePosition;
+        Vector2 targetPosition = initialWindowPosition + delta;
+        POINT point = new POINT();
+        point.X = (int)targetPosition.x;
+        point.Y = (int)targetPosition.y;
+        SetWindowPos(hwnd, HWND_TOPMOST, point.X, point.Y, Screen.width, Screen.height, SWP_NOSIZE);
+        //SetWindowPos(hwnd, HWND_TOPMOST, point.X - Screen.width / 2, point.Y - Screen.height / 2, 0, 0, TOPMOST_FLAGS);
+        //sendResult = SendMessage(hwnd, WM_SYSCOMMAND, SC_MOVE + HTCAPTION, (point.Y << 16) | (point.X & 0xFFFF));
+        SetCapture(hwnd);
+    }
+
+    public Vector2 getPoint()
+    {
+        Vector2 currentMousePosition = GetMousePosition();
+        Vector2 delta = currentMousePosition - initialMousePosition;
+        Vector2 targetPosition = initialWindowPosition + delta;
+        return targetPosition;
+    }
+
+    public bool getDraging()
+    {
+        return isDragging;
+    }
+    public int getSend()
+    {
+        return sendResult;
+    }
+
+    Vector2 GetMousePosition()
+    {
+        POINT point;
+        GetCursorPos(out point);
+        return new Vector2(point.X, point.Y);
+    }
+
+
+
+    /*
+    #if !UNITY_EDITOR
+        public static TransparentSetup Instance;
+
+        private uint originalStyle;
+        private uint originalExStyle;
+        private IntPtr hWnd = IntPtr.Zero; // ä¿®å¤ï¼šåˆå§‹åŒ–å­—æ®µ hWnd
+
+
+        public void RestoreWindow()  // æ¢å¤çª—å£
+        {
+            if (hWnd == IntPtr.Zero) return;
+
+            // ç¦æ­¢ç‚¹å‡»
+            SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle);
+        }
+
+        void OnApplicationQuit()
         {
             RestoreWindow();
         }
 
-        //¼ì²éÊó±êÊÇ·ñµã»÷
-        if (Input.GetMouseButtonDown(0))
+        void OnDestroy()
         {
-            //¼ì²éÊó±êÉÏÊÇ·ñÓĞÕÚµ²ÎïÌå
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            RaycastHit hit;
-            if (Physics.Raycast(ray, out hit))
+            RestoreWindow();
+        }
+
+        #region Windows API
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetActiveWindow();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
+        private const int GWL_EXSTYLE = -20;
+        private const uint WS_EX_LAYERED = 0x00080000;
+        private const uint WS_EX_TRANSPARENT = 0x00000020;
+        private const uint LWA_COLORKEY = 0x00000001;
+        private const uint LWA_ALPHA = 0x00000002;
+
+        #endregion
+
+        bool ableToClick = true; // æ˜¯å¦å…è®¸ç‚¹å‡»
+        void Start()
+        {
+            hWnd = GetActiveWindow(); // ä½¿ç”¨å­—æ®µ hWndï¼Œè€Œä¸æ˜¯å£°æ˜æ–°çš„å±€éƒ¨å˜é‡
+            originalStyle = GetWindowLong(hWnd, -16);       // GWL_STYLE
+            originalExStyle = GetWindowLong(hWnd, -20);     // GWL_EXSTYLE
+
+            //RawInput.Start();
+            //RawInput.WorkInBackground = true;
+
+            // è·å–åŸæ‰©å±•æ ·å¼
+            var exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
+
+            Instance = this;
+
+            // è®¾ç½®çª—å£ä¸ºé€æ˜ + ç‚¹å‡»ç©¿é€
+            //SetWindowLong(hWnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+
+
+        }
+        public static void SetTransparent(bool isTransparent)
+        {
+            if (isTransparent)
             {
-                // Èç¹ûµã»÷µ½ÎïÌå£¬»Ö¸´´°¿Ú
-                RestoreWindow();
-            }
-                // Èç¹ûµã»÷µ½UI£¬»Ö¸´´°¿Ú
-            else if (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
-            {
-                RestoreWindow();
+                // è®¾ç½®çª—å£ä¸ºé€æ˜ + ç‚¹å‡»ç©¿é€
+                SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
             }
             else
             {
-                // Èç¹ûÃ»ÓĞµã»÷µ½ÎïÌå£¬ÉèÖÃ´°¿ÚÎªÍ¸Ã÷ + µã»÷´©Í¸
-                SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+                // æ¢å¤çª—å£
+                SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle);
             }
         }
 
-        
-        if (Input.GetKeyDown(KeyCode.C) || GlobalInput.GetKeyDown(KeyCode.C))
+        public static void SetClickable(bool isClickable)
         {
-            // ÇĞ»»µã»÷´©Í¸×´Ì¬
-            ableToClick = !ableToClick;
-            if (ableToClick)
+            if (isClickable)
             {
-                // ÔÊĞíµã»÷
-                SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+                // å…è®¸ç‚¹å‡»
+                SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
             }
             else
             {
-                // ½ûÖ¹µã»÷
-                SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle);
+                // ç¦æ­¢ç‚¹å‡»
+                SetWindowLong(Instance.hWnd, GWL_EXSTYLE, Instance.originalExStyle);
             }
         }
-        
-    }
-#endif
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.Tab) || RawInput.IsKeyDown(RawKey.Tab))
+            {
+                RestoreWindow();
+            }
+
+            //æ£€æŸ¥é¼ æ ‡æ˜¯å¦ç‚¹å‡»
+            if (Input.GetMouseButtonDown(0))
+            {
+                //æ£€æŸ¥é¼ æ ‡ä¸Šæ˜¯å¦æœ‰é®æŒ¡ç‰©ä½“
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                RaycastHit hit;
+                if (Physics.Raycast(ray, out hit))
+                {
+                    // å¦‚æœç‚¹å‡»åˆ°ç‰©ä½“ï¼Œæ¢å¤çª—å£
+                    RestoreWindow();
+                }
+                    // å¦‚æœç‚¹å‡»åˆ°UIï¼Œæ¢å¤çª—å£
+                else if (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                {
+                    RestoreWindow();
+                }
+                else
+                {
+                    // å¦‚æœæ²¡æœ‰ç‚¹å‡»åˆ°ç‰©ä½“ï¼Œè®¾ç½®çª—å£ä¸ºé€æ˜ + ç‚¹å‡»ç©¿é€
+                    SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+                }
+            }
+
+
+            if (Input.GetKeyDown(KeyCode.C) || GlobalInput.GetKeyDown(KeyCode.C))
+            {
+                // åˆ‡æ¢ç‚¹å‡»ç©¿é€çŠ¶æ€
+                ableToClick = !ableToClick;
+                if (ableToClick)
+                {
+                    // å…è®¸ç‚¹å‡»
+                    SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+                }
+                else
+                {
+                    // ç¦æ­¢ç‚¹å‡»
+                    SetWindowLong(hWnd, GWL_EXSTYLE, originalExStyle);
+                }
+            }
+
+        }
+    #endif
+    */
 }
