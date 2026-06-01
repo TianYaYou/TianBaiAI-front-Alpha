@@ -1,184 +1,201 @@
-﻿using UnityEngine;
+using System.Text;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 using Whisper;
 using Whisper.Utils;
-using TMPro;
-using UnityEngine.UI;
-using System.Threading.Tasks;
-using System.Text; // 引入StringBuilder用于高效拼接文本
 
 public class WhisperVADManager_History : MonoBehaviour
 {
     public enum ListenState
     {
         Idle,
-        ListeningForWakeWord, // 阶段一：监听唤醒词
-        ListeningForCommand,  // 阶段二：录制正式指令
-        Processing            // 处理中
+        ListeningForWakeWord,
+        ListeningForCommand,
+        Processing
     }
 
-    [Header("核心引用")]
+    [Header("Core References")]
     public WhisperManager whisperManager;
     public MicrophoneRecord microphoneRecord;
 
-    [Header("UI 绑定")]
+    [Header("UI References")]
     public TextMeshProUGUI tmpText;
     public Button actionButton;
     public TextMeshProUGUI buttonText;
 
-    [Header("唤醒设置")]
+    [Header("Wake Settings")]
     public string wakeWord = "天白";
-    private ListenState _currentState = ListenState.Idle;
+    public bool disableTurboManagerOnThisObject = true;
+    public float wakeWordSilenceSeconds = 1.2f;
+    public float commandSilenceSeconds = 3.0f;
 
-    // 用于保存所有历史聊天记录
-    private StringBuilder _chatHistory = new StringBuilder();
+    private ListenState _currentState = ListenState.Idle;
+    private readonly StringBuilder _chatHistory = new StringBuilder();
+
+    void Awake()
+    {
+        if (!disableTurboManagerOnThisObject) return;
+
+        var turbo = GetComponent<WhisperTurboManager>();
+        if (turbo != null) turbo.enabled = false;
+    }
 
     async void Start()
     {
-        actionButton.interactable = false;
-        UpdateUIStatus("<color=#FFA500>系统：模型加载中...</color>");
+        if (whisperManager == null) whisperManager = GetComponent<WhisperManager>();
+        if (microphoneRecord == null) microphoneRecord = GetComponent<MicrophoneRecord>();
+        if (tmpText == null) tmpText = GetComponent<TextMeshProUGUI>();
+        if (actionButton == null) actionButton = GetComponentInChildren<Button>(true);
+        if (buttonText == null && actionButton != null) buttonText = actionButton.GetComponentInChildren<TextMeshProUGUI>(true);
+
+        if (whisperManager == null || microphoneRecord == null || tmpText == null || buttonText == null)
+        {
+            Debug.LogError("WhisperVADManager_History setup failed: missing references.");
+            enabled = false;
+            return;
+        }
+
+        if (actionButton != null) actionButton.interactable = false;
+        UpdateUIStatus("<color=#FFA500>System: loading Whisper model...</color>");
 
         await whisperManager.InitModel();
 
         microphoneRecord.vadStop = true;
+        microphoneRecord.OnRecordStop -= OnRecordStop;
         microphoneRecord.OnRecordStop += OnRecordStop;
 
-        actionButton.interactable = true;
-        actionButton.onClick.AddListener(ToggleRecording);
+        if (actionButton != null)
+        {
+            actionButton.onClick.RemoveAllListeners();
+            actionButton.onClick.AddListener(ToggleRecording);
+            actionButton.interactable = true;
+        }
 
-        // 添加一条初始欢迎语到历史记录中
-        AppendToHistory($"<color=#00FFFF>天白：</color>你好！请随时叫我的名字“{wakeWord}”唤醒我。");
-
-        // 模型加载完毕后，自动进入唤醒词监听循环
+        AppendToHistory($"<color=#00FFFF>天白:</color> 你好，请说唤醒词 \"{wakeWord}\"。");
         StartWakeWordListening();
     }
 
     public void ToggleRecording()
     {
         if (microphoneRecord.IsRecording)
+        {
             microphoneRecord.StopRecord();
+        }
         else if (_currentState == ListenState.Idle)
+        {
             StartWakeWordListening();
+        }
     }
 
-    // --- 核心UI更新逻辑 ---
-    // 将旧历史记录与实时尾部提示合并显示
     private void UpdateUIStatus(string statusMessage)
     {
-        // 如果没有历史记录，直接显示状态；如果有，则换行显示在最末尾
-        if (_chatHistory.Length == 0)
-        {
-            tmpText.text = statusMessage;
-        }
-        else
-        {
-            tmpText.text = _chatHistory.ToString() + "\n\n" + statusMessage;
-        }
+        if (_chatHistory.Length == 0) tmpText.text = statusMessage;
+        else tmpText.text = _chatHistory + "\n\n" + statusMessage;
     }
 
-    // 将确定的消息追加到历史记录中保存
     private void AppendToHistory(string message)
     {
-        if (_chatHistory.Length > 0)
-            _chatHistory.AppendLine(); // 换行
-
+        if (_chatHistory.Length > 0) _chatHistory.AppendLine();
         _chatHistory.Append(message);
     }
-    // ----------------------
 
     private void StartWakeWordListening()
     {
         _currentState = ListenState.ListeningForWakeWord;
 
-        microphoneRecord.vadStopTime = 1.2f;
+        microphoneRecord.vadStopTime = wakeWordSilenceSeconds;
         microphoneRecord.StartRecord();
 
         buttonText.text = "监听唤醒词中...";
         buttonText.color = Color.gray;
-
-        // 末尾显示浅灰色的提示，不污染历史记录
-        UpdateUIStatus($"<color=#808080><i>[系统：正在后台监听唤醒词 \"{wakeWord}\"...]</i></color>");
+        UpdateUIStatus($"<color=#808080><i>[系统：正在监听唤醒词 \"{wakeWord}\"]</i></color>");
     }
 
     private void StartCommandListening()
     {
         _currentState = ListenState.ListeningForCommand;
 
-        microphoneRecord.vadStopTime = 3.0f;
+        microphoneRecord.vadStopTime = commandSilenceSeconds;
         microphoneRecord.StartRecord();
 
-        buttonText.text = "录音中";
+        buttonText.text = "录音中...";
         buttonText.color = Color.green;
-
-        // 追加AI的应答到历史记录中
-        AppendToHistory("<color=#00FFFF>天白：</color>我在！请吩咐...");
-        // 更新UI，末尾显示正在听取指令
-        UpdateUIStatus("<color=#00FF00><i>[系统：正在倾听您的指令 (停顿3秒自动发送)...]</i></color>");
+        AppendToHistory("<color=#00FFFF>天白:</color> 我在，请说。");
+        UpdateUIStatus("<color=#00FF00><i>[系统：请说指令，停顿后自动发送]</i></color>");
     }
 
     private async void OnRecordStop(AudioChunk recordedAudio)
     {
         ListenState previousState = _currentState;
         _currentState = ListenState.Processing;
-        actionButton.interactable = false;
+        if (actionButton != null) actionButton.interactable = false;
 
         if (previousState == ListenState.ListeningForCommand)
         {
-            UpdateUIStatus("<color=#FFFF00><i>[系统：语音识别中...]</i></color>");
+            UpdateUIStatus("<color=#FFFF00><i>[系统：正在识别语音...]</i></color>");
         }
 
-        // 执行本地识别
         var res = await whisperManager.GetTextAsync(recordedAudio.Data, recordedAudio.Frequency, recordedAudio.Channels);
-        string recognizedText = res != null ? res.Result.Trim() : "";
+        string recognizedText = res != null ? res.Result.Trim() : string.Empty;
+        Debug.Log($"[WhisperVAD] 识别结果: {recognizedText}");
 
         if (previousState == ListenState.ListeningForWakeWord)
         {
-            if (recognizedText.Contains(wakeWord))
+            if (!string.IsNullOrWhiteSpace(recognizedText) && recognizedText.Contains(wakeWord))
             {
-                Debug.Log($"[唤醒成功] 听到关键词: {recognizedText}");
-                // 如果用户除了唤醒词还带了其他话，也可以作为用户发言记录下来（可选）
-                // AppendToHistory($"<color=#FFFFFF>用户：</color>{recognizedText}");
-
+                Debug.Log($"Wake word detected: {recognizedText}");
                 StartCommandListening();
-                actionButton.interactable = true;
+                if (actionButton != null) actionButton.interactable = true;
                 return;
             }
-            else
-            {
-                if (!string.IsNullOrEmpty(recognizedText))
-                    Debug.Log($"[忽略杂音] {recognizedText}");
 
-                StartWakeWordListening();
-                actionButton.interactable = true;
-                return;
-            }
-        }
-        else if (previousState == ListenState.ListeningForCommand)
-        {
-            buttonText.text = "处理指令中...";
-            buttonText.color = Color.white;
-
-            // 将用户正式说的指令永久固化到聊天历史中
-            if (!string.IsNullOrEmpty(recognizedText))
+            if (!string.IsNullOrWhiteSpace(recognizedText))
             {
-                AppendToHistory($"<color=#FFFFFF>用户：</color>{recognizedText}");
-            }
-            else
-            {
-                AppendToHistory("<color=#808080>用户：(未听清指令)</color>");
+                Debug.Log($"Ignored non-wake text: {recognizedText}");
             }
 
-            UpdateUIStatus("<color=#FFA500><i>[系统：正在处理您的请求...]</i></color>");
-            Debug.Log($"[收到最终指令]: {recognizedText}");
-
-            // TODO: 在这里对接你的业务逻辑 (如请求 LLM 返回结果)
-            await Task.Delay(1000); // 模拟耗时
-
-            // 假设 LLM 返回了结果，你可以把它追加进历史记录
-            // AppendToHistory("<color=#00FFFF>天白：</color>好的，已经为您处理完毕。");
-
-            // 重新回到后台监听唤醒词状态
             StartWakeWordListening();
-            actionButton.interactable = true;
+            if (actionButton != null) actionButton.interactable = true;
+            return;
         }
+
+        if (previousState != ListenState.ListeningForCommand)
+        {
+            StartWakeWordListening();
+            if (actionButton != null) actionButton.interactable = true;
+            return;
+        }
+
+        buttonText.text = "提交中...";
+        buttonText.color = Color.cyan;
+
+        if (string.IsNullOrWhiteSpace(recognizedText))
+        {
+            AppendToHistory("<color=#808080>用户:</color> (未识别到有效语音)");
+            StartWakeWordListening();
+            if (actionButton != null) actionButton.interactable = true;
+            return;
+        }
+
+        AppendToHistory($"<color=#FFFFFF>用户:</color> {recognizedText}");
+
+        // Use the same path as manual input: fill scene Input, then call InputDialog().
+        bool submitted = WebDialog.SubmitText(recognizedText);
+        Debug.Log($"[WhisperVAD] SubmitText result: {submitted}");
+        if (!submitted)
+        {
+            // Fallback to direct bridge if UI input is unavailable.
+            AIChatBridge.TrySend(recognizedText);
+            Debug.LogWarning("[WhisperVAD] SubmitText 失败，已回退 AIChatBridge 直连。");
+        }
+
+        StartWakeWordListening();
+        if (actionButton != null) actionButton.interactable = true;
+    }
+
+    void OnDestroy()
+    {
+        if (microphoneRecord != null) microphoneRecord.OnRecordStop -= OnRecordStop;
     }
 }
