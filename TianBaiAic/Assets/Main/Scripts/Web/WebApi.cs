@@ -120,7 +120,7 @@ public class WebApi : MonoBehaviour
                 }
                 else if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    Debug.LogError($"轮询 Python 服务器时出错: {request.error}");
+                    //Debug.LogError($"轮询 Python 服务器时出错: {request.error}");
                     StatusBox.Error($"服务器出错: {request.error}");
                 }
             }

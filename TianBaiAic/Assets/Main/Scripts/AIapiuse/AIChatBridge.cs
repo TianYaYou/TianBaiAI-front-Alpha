@@ -14,6 +14,15 @@ public static class AIChatBridge
 
     public static bool TrySend(string userText)
     {
+        return TrySend(userText, null, null, null);
+    }
+
+    public static bool TrySend(
+        string userText,
+        Action<string> onStreamUpdate,
+        Action<string> onComplete,
+        Action<string> onError)
+    {
         if (string.IsNullOrWhiteSpace(userText))
         {
             return true;
@@ -25,7 +34,7 @@ public static class AIChatBridge
             return false;
         }
 
-        _ = SendInternalAsync(userText);
+        _ = SendInternalAsync(userText, onStreamUpdate, onComplete, onError);
         return true;
     }
 
@@ -60,34 +69,80 @@ public static class AIChatBridge
         }
     }
 
-    private static async Task SendInternalAsync(string userText)
+    private static async Task SendInternalAsync(
+        string userText,
+        Action<string> onStreamUpdate,
+        Action<string> onComplete,
+        Action<string> onError)
     {
         try
         {
-            WebDialog.Dialog("Thinking...");
+            // Default UI behavior when caller doesn't provide callbacks.
+            if (onStreamUpdate == null)
+            {
+                WebDialog.Dialog("Thinking...");
+            }
 
             await _session.SendMessageAsync(
                 userText,
-                onStreamUpdate: text => WebDialog.Dialog(text),
+                onStreamUpdate: text =>
+                {
+                    if (onStreamUpdate != null)
+                    {
+                        onStreamUpdate(text);
+                    }
+                    else
+                    {
+                        WebDialog.Dialog(text);
+                    }
+                },
                 onComplete: text =>
                 {
                     if (string.IsNullOrWhiteSpace(text))
                     {
-                        WebDialog.Dialog("Received an empty response.");
+                        if (onComplete != null)
+                        {
+                            onComplete(string.Empty);
+                        }
+                        else
+                        {
+                            WebDialog.Dialog("Received an empty response.");
+                        }
                         return;
                     }
-                    WebDialog.Dialog(text);
+                    if (onComplete != null)
+                    {
+                        onComplete(text);
+                    }
+                    else
+                    {
+                        WebDialog.Dialog(text);
+                    }
                 },
                 onError: error =>
                 {
                     StatusBox.Error(error);
-                    WebDialog.Dialog("Request failed. Check launcher AI config.");
+                    if (onError != null)
+                    {
+                        onError(error);
+                    }
+                    else
+                    {
+                        WebDialog.Dialog("Request failed. Check launcher AI config.");
+                    }
                 });
         }
         catch (Exception e)
         {
             StatusBox.Error(e.Message);
-            WebDialog.Dialog("Request failed. Please try again.");
+            if (onError != null)
+            {
+                onError(e.Message);
+            }
+            else
+            {
+                WebDialog.Dialog("Request failed. Please try again.");
+            }
         }
     }
 }
