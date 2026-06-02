@@ -102,3 +102,5 @@
 
 # 忽略 Whisper 的模型：
 /TianBaiAIc/Assets/StreamingAssets/Whisper/*.bin
+
+/TianBaiAIc/Assets/StreamingAssets/AI/ai_config.json

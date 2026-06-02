@@ -158,6 +158,9 @@ MonoBehaviour:
   actionButton: {fileID: 0}
   buttonText: {fileID: 0}
   wakeWord: "\u5929\u767D"
+  disableTurboManagerOnThisObject: 1
+  wakeWordSilenceSeconds: 1.2
+  commandSilenceSeconds: 3
 --- !u!114 &3855118754102479441
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -217,7 +220,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   logLevel: 1
-  modelPath: Whisper/ggml-large-v3-turbo.bin
+  modelPath: Whisper/ggml-tiny.bin
   isModelPathInStreamingAssets: 1
   initOnAwake: 1
   useGpu: 1
