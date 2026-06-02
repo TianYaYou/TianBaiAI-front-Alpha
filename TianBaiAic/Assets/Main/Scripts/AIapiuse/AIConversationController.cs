@@ -72,6 +72,7 @@ public class AIConversationController : MonoBehaviour
 
     private static AIConversationController GetOrCreateInstance()
     {
+        // 场景里已经有控制器时直接复用；没有时临时创建一个，避免按钮/语音调用空引用。
         if (Instance != null) return Instance;
 
         Instance = FindObjectOfType<AIConversationController>();
@@ -111,6 +112,7 @@ public class AIConversationController : MonoBehaviour
 
     private bool TryEnsureSession(out string reason)
     {
+        // 懒加载：第一次真正对话时才读取配置和 prompt，启动器改完配置后可以 ReloadConfig 再重建。
         reason = null;
         if (_session != null) return true;
 
@@ -134,6 +136,7 @@ public class AIConversationController : MonoBehaviour
         AISessionSettings settings = _config.BuildDefaultSessionSettings();
         ApplyLegacyPromptSettings(_config, settings);
 
+        // AISession 只负责请求本身；历史 prompt、JSON 模式这些项目需求在这里装配。
         _session = new AISession(_config, settings);
         _loadedConfigPath = path;
         Debug.Log($"[AIConversation] Loaded config: {_loadedConfigPath}");
@@ -172,6 +175,7 @@ public class AIConversationController : MonoBehaviour
 
     private void ApplyLegacyPromptSettings(AIConfig config, AISessionSettings settings)
     {
+        // 沿用旧 Python 后端的 system_prompt.txt：它会要求模型返回固定 JSON 结构。
         if (!config.UseSystemPromptFile) return;
 
         string promptPath = Path.Combine(Application.streamingAssetsPath, config.SystemPromptFile);
@@ -195,6 +199,7 @@ public class AIConversationController : MonoBehaviour
 
     private string BuildUserInput(string userText)
     {
+        // 旧 prompt 里用户消息带时间和用户名，这里保持原格式，减少 prompt 迁移风险。
         if (_config == null || !_config.UseLegacyJsonResponse)
         {
             return userText;
@@ -207,6 +212,7 @@ public class AIConversationController : MonoBehaviour
 
     private string ExtractOutputText(string rawText)
     {
+        // 旧逻辑只把 response.content 显示给用户；其它字段保存在 LastResponse，后续给表情/动作/记忆系统用。
         if (_config == null || !_config.UseLegacyJsonResponse)
         {
             return string.IsNullOrWhiteSpace(rawText) ? "(empty response)" : rawText;
@@ -243,6 +249,7 @@ public class AIConversationController : MonoBehaviour
 
     private static string ExtractJsonObject(string rawText)
     {
+        // 模型偶尔会把 JSON 包在 ```json ... ``` 中，这里尽量把真正的 JSON 对象截出来。
         if (string.IsNullOrWhiteSpace(rawText)) return null;
 
         string text = rawText.Trim();

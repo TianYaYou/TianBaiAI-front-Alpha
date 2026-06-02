@@ -7,6 +7,10 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
+/// <summary>
+/// API 兼容模式。
+/// 目前主链路按 OpenAI Chat Completions 格式实现；Custom/Anthropic 先保留给后续扩展。
+/// </summary>
 public enum AICompatibilityMode
 {
     OpenAI,
@@ -14,10 +18,16 @@ public enum AICompatibilityMode
     Custom
 }
 
+/// <summary>
+/// AI 配置数据模型。
+/// 这个类只描述“配置文件里有哪些字段”，真正的读取路径和校验逻辑在 AIConfigLoader。
+/// 之后 WPF 启动器可以直接修改 StreamingAssets/AI/ai_config.json，Unity 侧重新加载即可生效。
+/// </summary>
 [Serializable]
 public class AIConfig
 {
     [Header("Base")]
+    [Tooltip("启动器未配置完成前保持 false，避免 Unity 一启动就误发请求。")]
     public bool Enabled = false;
     public string Name = "Launcher_AI";
     public AICompatibilityMode Mode = AICompatibilityMode.OpenAI;
@@ -36,9 +46,16 @@ public class AIConfig
     [TextArea(2, 6)] public string DefaultSystemPrompt = "You are a helpful assistant.";
 
     [Header("Legacy Prompt")]
+    [Tooltip("开启后会从 StreamingAssets 读取历史后端 prompt，而不是只使用 DefaultSystemPrompt。")]
     public bool UseSystemPromptFile = true;
+
+    [Tooltip("相对于 Application.streamingAssetsPath 的 prompt 路径。")]
     public string SystemPromptFile = "AI/system_prompt.txt";
+
+    [Tooltip("开启后要求模型返回旧后端 JSON 结构，并只把 response.content 显示到 Output。")]
     public bool UseLegacyJsonResponse = true;
+
+    [Tooltip("包装用户输入时使用的名字，会组成：[当前时间...]名字: 用户内容。")]
     public string UserDisplayName = "Ink_bai";
 
     public List<string> ModelList = new List<string> { "gpt-4o", "gpt-3.5-turbo" };
@@ -72,6 +89,7 @@ public class AIConfig
 
     public bool IsReady()
     {
+        // 最低限度校验：启动器/配置文件必须明确启用，并填好地址和 Key。
         return Enabled
                && !string.IsNullOrWhiteSpace(ApiHost)
                && !string.IsNullOrWhiteSpace(ApiPath)
@@ -90,6 +108,7 @@ public class AIConfig
 
     public AISessionSettings BuildDefaultSessionSettings()
     {
+        // 把配置文件转换成 AISession 能直接使用的运行参数。
         return new AISessionSettings
         {
             Model = string.IsNullOrWhiteSpace(DefaultModel) ? "gpt-4o-mini" : DefaultModel,
@@ -142,6 +161,10 @@ public class AIConfig
     }
 }
 
+/// <summary>
+/// AI 配置读取工具。
+/// 默认读取 StreamingAssets/AI/ai_config.json；如果设置了 TIANBAI_AI_CONFIG_PATH 环境变量，则优先读环境变量路径。
+/// </summary>
 public static class AIConfigLoader
 {
     private const string DefaultConfigFileName = "AI/ai_config.json";
@@ -197,6 +220,7 @@ public static class AIConfigLoader
 
     public static string GetConfigPath()
     {
+        // 预留给 WPF 启动器：启动器可以通过环境变量把配置文件放到统一的数据目录。
         string envPath = Environment.GetEnvironmentVariable(EnvVarName);
         if (!string.IsNullOrWhiteSpace(envPath))
         {

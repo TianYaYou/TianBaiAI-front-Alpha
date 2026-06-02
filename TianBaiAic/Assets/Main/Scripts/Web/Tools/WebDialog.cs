@@ -4,16 +4,28 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// 场景 UI 对话桥接脚本。
+/// 负责读取 InputField、把用户文本交给 AIConversationController，并把最终回复写入 OutputText。
+/// Whisper 识别结果也会先经过这里，因此手动输入和语音输入最终走同一条 AI 调用链路。
+/// </summary>
 public class WebDialog : MonoBehaviour
 {
     public static WebDialog webDialog;
+
+    // OutputText：AI 最终说出来的内容显示位置。
     public GameObject OutputText;
+
+    // InputText：场景里的 TMP_InputField。语音识别结果也会写进这里，方便直接在场景中 debug。
     public GameObject InputText;
+
     [Header("Compatibility")]
+    [Tooltip("仅用于兼容旧 Python 后端；当前新链路默认不走 WebApi。")]
     public bool enableLegacyWebApiFallback = false;
 
     void Start()
     {
+        // 保留旧代码的静态调用方式，方便 WebApi/按钮/Whisper 直接调用 WebDialog。
         webDialog = this;
     }
 
@@ -46,6 +58,7 @@ public class WebDialog : MonoBehaviour
 
     public static void Dialog(string message)
     {
+        // AI 回复、错误提示、流式文本更新都会走这个入口，统一写到 OutputText。
         if (!EnsureInstance()) return;
         var output = webDialog.OutputText != null ? webDialog.OutputText.GetComponent<TextMeshProUGUI>() : null;
         if (output != null)
@@ -66,7 +79,7 @@ public class WebDialog : MonoBehaviour
         InputDialogInternal(true);
     }
 
-    // 内部提交入口：可选择是否在提交后清空输入框
+    // 内部提交入口：clearAfterRead=true 表示手动按钮提交后清空；false 表示语音调试时保留 InputField 内容。
     private static void InputDialogInternal(bool clearAfterRead)
     {
         if (!TryGetInputField(out var field)) return;
@@ -105,6 +118,7 @@ public class WebDialog : MonoBehaviour
 
     public static bool SubmitText(string text)
     {
+        // Whisper 调用入口：先把识别文本放入 InputField，再复用 InputDialogInternal 提交。
         if (!TryGetInputField(out var field))
         {
             Debug.LogError("[WebDialog] SubmitText failed: TMP_InputField not found.");
