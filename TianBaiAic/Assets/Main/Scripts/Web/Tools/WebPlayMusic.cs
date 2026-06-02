@@ -18,13 +18,31 @@ public class WebPlayMusic : MonoBehaviour
 
     public static void PlayMusic(string file)
     {
+        if (webPlayMusic == null || webPlayMusic.audioSource == null)
+        {
+            Debug.LogWarning("[WebPlayMusic] PlayMusic skipped: AudioSource is not ready.");
+            return;
+        }
+
         //播放音乐
         AudioClip audioClip = webPlayMusic.LoadAudio(file);
+        if (audioClip == null)
+        {
+            Debug.LogWarning($"[WebPlayMusic] PlayMusic skipped: audio file not found or invalid: {file}");
+            return;
+        }
+
         webPlayMusic.audioSource.clip = audioClip;
         webPlayMusic.audioSource.Play();
     }
     public static void StopMusic()
     {
+        if (webPlayMusic == null || webPlayMusic.audioSource == null)
+        {
+            Debug.LogWarning("[WebPlayMusic] StopMusic skipped: AudioSource is not ready.");
+            return;
+        }
+
         webPlayMusic.audioSource.Stop();
     }
 
