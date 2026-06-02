@@ -5,8 +5,14 @@ using UnityEngine.UI;
 using Whisper;
 using Whisper.Utils;
 
+/// <summary>
+/// Whisper 语音监听入口。
+/// 负责两段式录音：先监听唤醒词，再监听真正的用户指令；
+/// 指令识别完成后会交给 WebDialog.SubmitText，让语音链路和手动输入共用同一套对话逻辑。
+/// </summary>
 public class WhisperVADManager_History : MonoBehaviour
 {
+    // 当前监听状态。用状态机区分“唤醒词录音”和“正式指令录音”，避免把唤醒词直接发给 AI。
     public enum ListenState
     {
         Idle,
@@ -35,6 +41,7 @@ public class WhisperVADManager_History : MonoBehaviour
 
     void Awake()
     {
+        // 场景里可能同时挂了 WhisperTurboManager；这里默认关闭它，避免两个录音器同时抢麦克风。
         if (!disableTurboManagerOnThisObject) return;
 
         var turbo = GetComponent<WhisperTurboManager>();
@@ -59,6 +66,7 @@ public class WhisperVADManager_History : MonoBehaviour
         if (actionButton != null) actionButton.interactable = false;
         UpdateUIStatus("<color=#FFA500>System: loading Whisper model...</color>");
 
+        // Whisper 模型初始化完成后再开始监听，否则第一次录音可能无法被识别。
         await whisperManager.InitModel();
 
         microphoneRecord.vadStop = true;
@@ -102,6 +110,7 @@ public class WhisperVADManager_History : MonoBehaviour
 
     private void StartWakeWordListening()
     {
+        // 第一段录音只负责判断有没有说出 wakeWord。
         _currentState = ListenState.ListeningForWakeWord;
 
         microphoneRecord.vadStopTime = wakeWordSilenceSeconds;
@@ -114,6 +123,7 @@ public class WhisperVADManager_History : MonoBehaviour
 
     private void StartCommandListening()
     {
+        // 第二段录音才是要发送给 AI 的用户内容。
         _currentState = ListenState.ListeningForCommand;
 
         microphoneRecord.vadStopTime = commandSilenceSeconds;
@@ -127,6 +137,7 @@ public class WhisperVADManager_History : MonoBehaviour
 
     private async void OnRecordStop(AudioChunk recordedAudio)
     {
+        // VAD 检测到停顿后会进入这里；previousState 决定这段音频应该按唤醒词还是按指令处理。
         ListenState previousState = _currentState;
         _currentState = ListenState.Processing;
         if (actionButton != null) actionButton.interactable = false;
@@ -142,6 +153,7 @@ public class WhisperVADManager_History : MonoBehaviour
 
         if (previousState == ListenState.ListeningForWakeWord)
         {
+            // 只有识别文本包含唤醒词时，才进入正式指令录音。
             if (!string.IsNullOrWhiteSpace(recognizedText) && recognizedText.Contains(wakeWord))
             {
                 Debug.Log($"Wake word detected: {recognizedText}");
@@ -167,6 +179,7 @@ public class WhisperVADManager_History : MonoBehaviour
             return;
         }
 
+        // 到这里说明已经拿到正式指令，先显示在 Whisper 面板，再提交给 UI/AI 链路。
         buttonText.text = "提交中...";
         buttonText.color = Color.cyan;
 

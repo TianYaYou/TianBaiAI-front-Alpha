@@ -9,6 +9,10 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
+/// <summary>
+/// Chat Completions 的一条消息。
+/// role 通常为 system/user/assistant，content 是实际文本。
+/// </summary>
 [Serializable]
 public class ChatMessage
 {
@@ -26,6 +30,10 @@ public class ChatMessage
     }
 }
 
+/// <summary>
+/// 单次 AI 会话的运行参数。
+/// AIConfig 负责从 JSON 保存配置；AISessionSettings 负责告诉 AISession 这次请求怎么发。
+/// </summary>
 [Serializable]
 public class AISessionSettings
 {
@@ -48,6 +56,11 @@ public class AISessionSettings
     public string SystemPrompt = "You are a helpful assistant.";
 }
 
+/// <summary>
+/// OpenAI 兼容 API 会话。
+/// 负责维护上下文历史、拼接请求 payload、发送 HTTP 请求，并把流式/非流式结果通过回调交回上层。
+/// 它不直接操作 UI；UI 更新由 WebDialog 和 AIConversationController 负责。
+/// </summary>
 public class AISession
 {
     public AIConfig Config { get; private set; }
@@ -62,6 +75,7 @@ public class AISession
         Settings = settings ?? new AISessionSettings();
         _history = new List<ChatMessage>();
 
+        // system prompt 作为第一条历史消息保存，后续 PassHistory=true 时会一起发给模型。
         if (!string.IsNullOrEmpty(Settings.SystemPrompt))
         {
             _history.Add(new ChatMessage("system", Settings.SystemPrompt));
@@ -95,6 +109,7 @@ public class AISession
         Action<string> onError = null,
         CancellationToken cancellationToken = default)
     {
+        // 防止同一个会话同时发起多个请求，避免历史记录顺序错乱。
         if (IsGenerating)
         {
             onError?.Invoke("当前有正在生成的对话，请稍后再试。");
@@ -147,6 +162,7 @@ public class AISession
         string jsonPayload = requestData.ToString();
         string url = Config.GetChatEndpoint(); // 使用智能拼接路由
 
+        // 当前实现使用 Bearer Token，兼容多数 OpenAI-like 服务。
         using HttpClient client = new HttpClient();
         client.DefaultRequestHeaders.Add("Authorization", $"Bearer {Config.ApiKey.Trim()}");
         StringContent content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
@@ -178,6 +194,7 @@ public class AISession
 
     private async Task HandleStreamResponse(HttpResponseMessage response, Action<string> onStreamUpdate, Action<string> onComplete, CancellationToken cancellationToken)
     {
+        // 处理 SSE 格式的 data: ... 流式返回。
         using var stream = await response.Content.ReadAsStreamAsync();
         using var reader = new StreamReader(stream);
         StringBuilder fullResponse = new StringBuilder();
@@ -212,6 +229,7 @@ public class AISession
 
     private async Task HandleStandardResponse(HttpResponseMessage response, Action<string> onComplete, CancellationToken cancellationToken)
     {
+        // 非流式返回：一次性取 choices[0].message.content。
         string jsonResponse = await response.Content.ReadAsStringAsync();
         JObject json = JObject.Parse(jsonResponse);
         string replyText = json["choices"]?[0]?["message"]?["content"]?.ToString() ?? "";
