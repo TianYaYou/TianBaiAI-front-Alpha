@@ -147,6 +147,7 @@ public class WhisperVADManager_History : MonoBehaviour
         buttonText.text = "录音中...";
         buttonText.color = Color.green;
         AppendToHistory("<color=#00FFFF>天白:</color> 我在，请说。");
+        WebDialog.SetInputText("天白正在听");
         UpdateUIStatus("<color=#00FF00><i>[系统：请说指令，停顿后自动发送]</i></color>");
     }
 

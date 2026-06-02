@@ -221,6 +221,7 @@ public class AIConversationController : MonoBehaviour
         if (TryParseLegacyResponse(rawText, out LegacyDialogEnvelope parsed))
         {
             LastResponse = parsed;
+            AIResponseDispatcher.Dispatch(parsed.response);
             string content = parsed.response != null ? parsed.response.content : null;
             return string.IsNullOrWhiteSpace(content) ? "(empty response content)" : content;
         }

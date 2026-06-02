@@ -160,6 +160,14 @@ public class WebDialog : MonoBehaviour
         return true;
     }
 
+    public static void SetInputText(string message)
+    {
+        if (!TryGetInputField(out var field)) return;
+
+        field.text = message;
+        Debug.Log($"[WebDialog] Set InputField text: {message}");
+    }
+
     public static void GitInputDialogControl(int type)
     {
         if (type == 0) webDialog.InputText.SetActive(false);
