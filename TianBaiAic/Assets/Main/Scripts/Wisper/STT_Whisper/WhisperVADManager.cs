@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -180,14 +180,19 @@ public class WhisperVADManager_History : MonoBehaviour
 
         AppendToHistory($"<color=#FFFFFF>用户:</color> {recognizedText}");
 
-        // Use the same path as manual input: fill scene Input, then call InputDialog().
+        // 语音链路和手动输入保持一致：
+        // 先把识别文本写进场景里的 InputField，再调用 WebDialog 的提交逻辑。
         bool submitted = WebDialog.SubmitText(recognizedText);
         Debug.Log($"[WhisperVAD] SubmitText result: {submitted}");
         if (!submitted)
         {
-            // Fallback to direct bridge if UI input is unavailable.
-            AIChatBridge.TrySend(recognizedText);
-            Debug.LogWarning("[WhisperVAD] SubmitText 失败，已回退 AIChatBridge 直连。");
+            // 如果 UI 输入框暂时不可用，就直接走 AI 控制器，避免语音结果丢失。
+            AIConversationController.TryAsk(
+                recognizedText,
+                onStreamUpdate: WebDialog.Dialog,
+                onComplete: WebDialog.Dialog,
+                onError: error => WebDialog.Dialog($"AI config or request failed:\n{error}"));
+            Debug.LogWarning("[WhisperVAD] SubmitText failed, fallback to AIConversationController.");
         }
 
         StartWakeWordListening();

@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -81,8 +81,12 @@ public class WebDialog : MonoBehaviour
 
         Debug.Log($"[WebDialog] InputDialog send: {input}");
 
-        // Preferred path: AIapiuse (launcher-driven config).
-        if (AIChatBridge.TrySend(input))
+        // 优先使用新的 AI 对话控制器：读取配置 -> 调 API -> 把回复写进 Output。
+        if (AIConversationController.TryAsk(
+            input,
+            onStreamUpdate: Dialog,
+            onComplete: Dialog,
+            onError: error => Dialog($"AI config or request failed:\n{error}")))
         {
             // Debug 模式下保留文本，便于你确认“识别文本 -> InputField -> 提交”链路
             if (!clearAfterRead) field.text = input;
@@ -96,9 +100,7 @@ public class WebDialog : MonoBehaviour
             return;
         }
 
-        string configPath = AIConfigLoader.GetConfigPath();
-        Dialog($"AI config not ready. Please set launcher config:\n{configPath}");
-        StatusBox.Warning("AI config missing, legacy fallback is disabled.");
+        StatusBox.Warning("AI request was not started. Check the AI config message in Output.");
     }
 
     public static bool SubmitText(string text)

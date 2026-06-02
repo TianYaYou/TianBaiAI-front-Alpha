@@ -35,7 +35,40 @@ public class AIConfig
     public bool DefaultPassHistory = true;
     [TextArea(2, 6)] public string DefaultSystemPrompt = "You are a helpful assistant.";
 
+    [Header("Legacy Prompt")]
+    public bool UseSystemPromptFile = true;
+    public string SystemPromptFile = "AI/system_prompt.txt";
+    public bool UseLegacyJsonResponse = true;
+    public string UserDisplayName = "Ink_bai";
+
     public List<string> ModelList = new List<string> { "gpt-4o", "gpt-3.5-turbo" };
+
+    /// <summary>
+    /// 创建默认配置模板。
+    /// 启动器之后可以改同一个 JSON 文件；这里先给 Unity 一个可见、可编辑的文件结构。
+    /// </summary>
+    public static AIConfig CreateTemplate()
+    {
+        return new AIConfig
+        {
+            Enabled = false,
+            Name = "Launcher_AI",
+            Mode = AICompatibilityMode.OpenAI,
+            ApiKey = "PUT_API_KEY_HERE",
+            ApiHost = "https://api.openai.com/v1",
+            ApiPath = "/chat/completions",
+            ModelsPath = "/models",
+            DefaultModel = "gpt-4o-mini",
+            DefaultTemperature = 0.7f,
+            DefaultStream = false,
+            DefaultPassHistory = true,
+            DefaultSystemPrompt = "You are TianBai, a gentle desktop companion. Reply briefly and warmly.",
+            UseSystemPromptFile = true,
+            SystemPromptFile = "AI/system_prompt.txt",
+            UseLegacyJsonResponse = true,
+            UserDisplayName = "Ink_bai"
+        };
+    }
 
     public bool IsReady()
     {
@@ -111,7 +144,7 @@ public class AIConfig
 
 public static class AIConfigLoader
 {
-    private const string DefaultConfigFileName = "launcher_ai_config.json";
+    private const string DefaultConfigFileName = "AI/ai_config.json";
     private const string EnvVarName = "TIANBAI_AI_CONFIG_PATH";
 
     public static bool TryLoad(out AIConfig config, out string reason)
@@ -119,10 +152,21 @@ public static class AIConfigLoader
         config = null;
         reason = null;
 
-        string path = GetConfigPath();
+        return TryLoadFromPath(GetConfigPath(), out config, out reason);
+    }
+
+    /// <summary>
+    /// 从指定路径读取 AI 配置。
+    /// 这个方法给 Unity 内部和未来启动器共用，避免重复写解析逻辑。
+    /// </summary>
+    public static bool TryLoadFromPath(string path, out AIConfig config, out string reason)
+    {
+        config = null;
+        reason = null;
+
         if (!File.Exists(path))
         {
-            reason = $"Launcher config file not found: {path}";
+            reason = $"AI config file not found: {path}";
             return false;
         }
 
@@ -159,6 +203,6 @@ public static class AIConfigLoader
             return envPath;
         }
 
-        return Path.Combine(Application.persistentDataPath, DefaultConfigFileName);
+        return Path.Combine(Application.streamingAssetsPath, DefaultConfigFileName);
     }
 }
