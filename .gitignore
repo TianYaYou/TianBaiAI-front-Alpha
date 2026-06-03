@@ -108,3 +108,5 @@
 /TianBaiAic/Assets/StreamingAssets/AI/ai_config.json
 /TianBaiAic/Assets/StreamingAssets/Memory/*
 !/TianBaiAic/Assets/StreamingAssets/Memory/.gitkeep
+/TianBaiAic/Assets/StreamingAssets/AI/tts_config.json
+/TianBaiAic/Assets/StreamingAssets/AI/tts_config.json.meta
