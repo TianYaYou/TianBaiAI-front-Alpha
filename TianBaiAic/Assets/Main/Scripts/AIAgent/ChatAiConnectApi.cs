@@ -7,6 +7,8 @@ using Newtonsoft.Json;
 
 namespace InkBai.MainScene
 {
+
+    [System.Obsolete("ChatAiConnectApi is deprecated, please use the new ChatSystem instead.")]
     public class ChatAiConnectApi : MonoBehaviour
     {
         [Header("DeepSeek API Settings")]
