@@ -99,3 +99,8 @@
 
 # Auto-generated scenes by play mode tests
 /TianBaiAic/[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# 忽略 Whisper 的模型：
+/TianBaiAIc/Assets/StreamingAssets/Whisper/*.bin
+
+/TianBaiAIc/Assets/StreamingAssets/AI/ai_config.json
