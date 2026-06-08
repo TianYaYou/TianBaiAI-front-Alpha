@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -8,7 +8,8 @@ using UnityEngine;
 
 /// <summary>
 /// 场景中的 TTS 控制器。
-/// 负责读取配置文件、拼接 MIMO description、调用 TTSAiConnectApi，并把返回音频送进 AudioSource。
+/// 职责边界：读取配置、选择本地/远端 TTS 会话、把生成结果转成 AudioClip 并交给 AudioSource 播放。
+/// 天白主链路只需要继续调用 TrySpeak/SpeakAsync，不需要关心底层是 sherpa-onnx 还是远端 URL。
 /// </summary>
 public class TTSMain : MonoBehaviour
 {
@@ -30,7 +31,8 @@ public class TTSMain : MonoBehaviour
     [Header("Debug")]
     public bool logTTS = true;
 
-    private TTSAiConnectApi _session;
+    private TTSAiConnectApi _remoteSession;
+    private TTSSherpaOnnxSession _localSession;
     private TTSConfig _config;
     private string _loadedConfigPath;
     private CancellationTokenSource _currentRequestCts;
@@ -39,6 +41,8 @@ public class TTSMain : MonoBehaviour
     public AudioClip LastClip { get; private set; }
     public string LastDescription { get; private set; }
     public string LastContent { get; private set; }
+    public TTSConfig Config => _config;
+    public TTSRunMode RunMode => _config != null ? _config.Mode : TTSRunMode.RemoteUrl;
 
     private readonly Dictionary<string, string> _emotionDescriptions = new Dictionary<string, string>
     {
@@ -60,19 +64,57 @@ public class TTSMain : MonoBehaviour
         if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
     }
 
+    private void OnDestroy()
+    {
+        Stop();
+        DisposeSessions();
+
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
     /// <summary>
     /// 启动器修改配置后调用这个方法，让下一次 TTS 重新读取配置。
     /// </summary>
     public void ReloadConfig()
     {
-        _session = null;
+        Stop();
+        DisposeSessions();
         _config = null;
         _loadedConfigPath = null;
         LastClip = null;
     }
 
     /// <summary>
-    /// 静态入口，方便未来 AI 主链路直接调用。
+    /// 测试场景可以直接切换运行模式；正式启动器之后会通过写配置文件完成同一件事。
+    /// </summary>
+    public void SetRunMode(TTSRunMode runMode)
+    {
+        if (_config == null)
+        {
+            TryLoadConfig(out _);
+        }
+
+        if (_config == null)
+        {
+            _config = TTSConfig.CreateTemplate();
+            _config.Enabled = true;
+        }
+
+        Stop();
+        DisposeSessions();
+        _config.Mode = runMode;
+
+        if (logTTS)
+        {
+            Debug.Log($"[TTSMain] TTS run mode switched to {runMode}.");
+        }
+    }
+
+    /// <summary>
+    /// 静态入口，方便 AI 主链路直接调用。
     /// </summary>
     public static bool TrySpeak(
         string content,
@@ -141,11 +183,11 @@ public class TTSMain : MonoBehaviour
         {
             if (logTTS)
             {
-                Debug.Log($"[TTSMain] Start TTS. emotion={NormalizeEmotion(emotion)}, content={content}");
+                Debug.Log($"[TTSMain] Start TTS. mode={_config.Mode}, emotion={NormalizeEmotion(emotion)}, content={content}");
                 Debug.Log($"[TTSMain] Voice description: {LastDescription}");
             }
 
-            TTSAudioResult result = await _session.GenerateSpeechAsync(
+            TTSAudioResult result = await GenerateSpeechByModeAsync(
                 LastDescription,
                 content,
                 onError,
@@ -205,8 +247,37 @@ public class TTSMain : MonoBehaviour
     private bool TryEnsureSession(out string reason)
     {
         reason = null;
-        if (_session != null) return true;
 
+        if (_config == null && !TryLoadConfig(out reason))
+        {
+            return false;
+        }
+
+        switch (_config.Mode)
+        {
+            case TTSRunMode.LocalSherpaOnnx:
+                if (_localSession == null)
+                {
+                    _localSession = new TTSSherpaOnnxSession(_config);
+                }
+                return true;
+
+            case TTSRunMode.RemoteUrl:
+                if (_remoteSession == null)
+                {
+                    _remoteSession = new TTSAiConnectApi(_config, _config.BuildDefaultSessionSettings());
+                }
+                return true;
+
+            default:
+                reason = $"Unsupported TTS run mode: {_config.Mode}";
+                return false;
+        }
+    }
+
+    private bool TryLoadConfig(out string reason)
+    {
+        reason = null;
         string path = GetConfigPath();
         if (!File.Exists(path))
         {
@@ -224,10 +295,23 @@ public class TTSMain : MonoBehaviour
             return false;
         }
 
-        _session = new TTSAiConnectApi(_config, _config.BuildDefaultSessionSettings());
         _loadedConfigPath = path;
-        if (logTTS) Debug.Log($"[TTSMain] Loaded config: {_loadedConfigPath}");
+        if (logTTS) Debug.Log($"[TTSMain] Loaded config: {_loadedConfigPath}, mode={_config.Mode}");
         return true;
+    }
+
+    private Task<TTSAudioResult> GenerateSpeechByModeAsync(
+        string description,
+        string content,
+        Action<string> onError,
+        CancellationToken cancellationToken)
+    {
+        if (_config.Mode == TTSRunMode.LocalSherpaOnnx)
+        {
+            return _localSession.GenerateSpeechAsync(description, content, onError, cancellationToken);
+        }
+
+        return _remoteSession.GenerateSpeechAsync(description, content, onError, cancellationToken);
     }
 
     private string BuildVoiceDescription(string emotion)
@@ -248,6 +332,7 @@ public class TTSMain : MonoBehaviour
             : $"根据句子内容表现“{normalized}”的情绪，但不要破坏固定音色。";
 
         // my_description = 固定声音底色 + 当前句子的情绪微调。
+        // 远端 MIMO 会真正读取这段描述；本地 VITS 暂时无法动态改音色，但保留字段方便未来替换模型或接情绪参数。
         return $"{_config.BaseVoiceDescription}\n当前情绪：{emotionText}";
     }
 
@@ -263,20 +348,35 @@ public class TTSMain : MonoBehaviour
 
     private AudioClip CreateClipFromResult(TTSAudioResult result)
     {
-        if (result == null || result.AudioBytes == null || result.AudioBytes.Length == 0)
+        if (result == null)
+        {
+            return null;
+        }
+
+        if (result.FloatSamples != null && result.FloatSamples.Length > 0)
+        {
+            string clipName = string.IsNullOrWhiteSpace(result.ClipName) ? "Sherpa_TTS" : result.ClipName;
+            return WavAudioClipUtility.CreateFromFloatSamples(
+                result.FloatSamples,
+                clipName,
+                Mathf.Max(1, result.Channels),
+                Mathf.Max(8000, result.SampleRate));
+        }
+
+        if (result.AudioBytes == null || result.AudioBytes.Length == 0)
         {
             return null;
         }
 
         if (result.IsWav)
         {
-            return WavAudioClipUtility.TryCreateFromWav(result.AudioBytes, "MIMO_TTS_WAV");
+            return WavAudioClipUtility.TryCreateFromWav(result.AudioBytes, "Remote_TTS_WAV");
         }
 
         // MIMO 偶尔可能返回裸 PCM，小米 Python 测试脚本里就是按 int16 + 24000Hz 兜底播放。
         return WavAudioClipUtility.CreateFromPcm16(
             result.AudioBytes,
-            "MIMO_TTS_PCM",
+            "Remote_TTS_PCM",
             Mathf.Max(1, result.FallbackChannels),
             Mathf.Max(8000, result.FallbackSampleRate),
             pcmVolume);
@@ -290,6 +390,13 @@ public class TTSMain : MonoBehaviour
         }
 
         return TTSConfigLoader.GetConfigPath();
+    }
+
+    private void DisposeSessions()
+    {
+        _remoteSession = null;
+        _localSession?.Dispose();
+        _localSession = null;
     }
 
     private static void CreateTemplateConfig(string path)
@@ -308,11 +415,30 @@ public class TTSMain : MonoBehaviour
 }
 
 /// <summary>
-/// 把 MIMO 返回的音频字节转成 Unity AudioClip。
-/// 当前支持 WAV PCM16 / WAV float32 / 裸 PCM16，后续返回格式扩展时集中改这里。
+/// 把 TTS 返回的音频数据转成 Unity AudioClip。
+/// 当前支持 sherpa float PCM、WAV PCM16、WAV float32、裸 PCM16，后续返回格式扩展时集中改这里。
 /// </summary>
 public static class WavAudioClipUtility
 {
+    public static AudioClip CreateFromFloatSamples(float[] samples, string clipName, int channels, int sampleRate)
+    {
+        if (samples == null || samples.Length == 0 || channels <= 0 || sampleRate <= 0)
+        {
+            return null;
+        }
+
+        float[] copiedSamples = new float[samples.Length];
+        for (int i = 0; i < samples.Length; i++)
+        {
+            copiedSamples[i] = Mathf.Clamp(samples[i] * 1f, -1f, 1f);
+        }
+
+        int frames = copiedSamples.Length / channels;
+        AudioClip clip = AudioClip.Create(clipName, frames, channels, sampleRate, false);
+        clip.SetData(copiedSamples, 0);
+        return clip;
+    }
+
     public static AudioClip TryCreateFromWav(byte[] wavBytes, string clipName)
     {
         if (wavBytes == null || wavBytes.Length < 44)

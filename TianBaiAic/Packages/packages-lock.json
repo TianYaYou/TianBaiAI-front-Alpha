@@ -10,6 +10,13 @@
       },
       "hash": "78ee5418415953b79c358bfe6355fcc3fde7912b"
     },
+    "com.eitan.sherpa-onnx-unity": {
+      "version": "https://github.com/EitanWong/com.eitan.sherpa-onnx-unity.git#upm",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "cf70be74cb51682fdde9b45074df04d1bf420147"
+    },
     "com.unity.2d.animation": {
       "version": "10.2.0",
       "depth": 1,

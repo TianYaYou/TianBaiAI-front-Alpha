@@ -21,17 +21,22 @@ public class TTSSessionSettings
 }
 
 /// <summary>
-/// MIMO TTS 返回的音频结果。
-/// TTSMain 会继续把 AudioBytes 转成 Unity AudioClip 并播放。
+/// TTS 生成结果。
+/// 远端模式通常填 AudioBytes；本地 sherpa-onnx 模式直接填 FloatSamples。
+/// TTSMain 只关心“最后能不能变成 AudioClip”，不用知道音频来自云端还是本地模型。
 /// </summary>
 public class TTSAudioResult
 {
     public byte[] AudioBytes;
+    public float[] FloatSamples;
     public bool IsWav;
     public string AssistantText;
     public string RawJson;
     public int FallbackSampleRate;
     public int FallbackChannels;
+    public int SampleRate;
+    public int Channels = 1;
+    public string ClipName = "TTS_Audio";
 }
 
 /// <summary>

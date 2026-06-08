@@ -1,17 +1,27 @@
-using System;
+﻿using System;
 using System.IO;
 using Newtonsoft.Json;
 using UnityEngine;
 
 /// <summary>
-/// TTS API 兼容模式。
-/// 当前只真正实现 MIMO；OpenAICompatible/Custom 先作为后续扩展位保留。
+/// TTS 运行模式。
+/// 之后 WPF 启动器只需要改配置文件里的 Mode，就能在远端 API 和本地 sherpa-onnx 之间切换。
 /// </summary>
-public enum TTSCompatibilityMode
+public enum TTSRunMode
 {
-    MIMO,
-    OpenAICompatible,
-    Custom
+    RemoteUrl = 0,
+    LocalSherpaOnnx = 1
+}
+
+/// <summary>
+/// 远端 TTS API 的协议类型。
+/// 现在主要跑 MIMO；其他枚举先保留，方便以后接 OpenAI 兼容或自定义 URL。
+/// </summary>
+public enum TTSRemoteProtocol
+{
+    MIMO = 0,
+    OpenAICompatible = 1,
+    Custom = 2
 }
 
 /// <summary>
@@ -26,18 +36,38 @@ public class TTSConfig
     [Tooltip("启动器未配置完成前保持 false，避免 Unity 一启动就误触发真实 TTS 请求。")]
     public bool Enabled = false;
     public string Name = "Launcher_TTS";
-    public TTSCompatibilityMode Mode = TTSCompatibilityMode.MIMO;
-    public string ApiKey = "";
 
-    [Header("Endpoints")]
+    [Tooltip("RemoteUrl 使用远端 API；LocalSherpaOnnx 使用 StreamingAssets 里的本地 sherpa-onnx 模型。")]
+    public TTSRunMode Mode = TTSRunMode.RemoteUrl;
+
+    [Header("Remote API")]
+    public TTSRemoteProtocol RemoteProtocol = TTSRemoteProtocol.MIMO;
+    public string ApiKey = "";
     public string ApiHost = "https://token-plan-cn.xiaomimimo.com/v1";
     public string ApiPath = "/chat/completions";
-
-    [Header("MIMO TTS")]
     public string Model = "mimo-v2.5-tts-voicedesign";
     public string AudioFormat = "wav";
     public int FallbackSampleRate = 24000;
     public int FallbackChannels = 1;
+
+    [Header("Local sherpa-onnx")]
+    [Tooltip("相对于 Application.streamingAssetsPath 的模型目录。启动器也可以改成绝对路径。")]
+    public string SherpaModelRoot = "sherpa-onnx/models/speech-synthesis/vits-melo-tts-zh_en";
+    public string SherpaModelFile = "model.onnx";
+    public string SherpaTokensFile = "tokens.txt";
+    public string SherpaLexiconFile = "lexicon.txt";
+    public string SherpaDictDir = "dict";
+    public string[] SherpaRuleFsts = { "phone.fst", "date.fst", "number.fst", "new_heteronym.fst" };
+    public string SherpaProvider = "cpu";
+    public int SherpaNumThreads = 2;
+    public bool SherpaDebug = false;
+    public int SherpaSpeakerId = 0;
+    public float SherpaSpeed = 1f;
+    public int SherpaMaxNumSentences = 2;
+    public float SherpaSilenceScale = 0.2f;
+    public float SherpaNoiseScale = 0.667f;
+    public float SherpaNoiseScaleW = 0.8f;
+    public float SherpaLengthScale = 1f;
 
     [Header("Voice Design")]
     [TextArea(2, 5)]
@@ -51,7 +81,8 @@ public class TTSConfig
         {
             Enabled = false,
             Name = "Launcher_TTS",
-            Mode = TTSCompatibilityMode.MIMO,
+            Mode = TTSRunMode.RemoteUrl,
+            RemoteProtocol = TTSRemoteProtocol.MIMO,
             ApiKey = "PUT_MIMO_API_KEY_HERE",
             ApiHost = "https://token-plan-cn.xiaomimimo.com/v1",
             ApiPath = "/chat/completions",
@@ -59,6 +90,21 @@ public class TTSConfig
             AudioFormat = "wav",
             FallbackSampleRate = 24000,
             FallbackChannels = 1,
+            SherpaModelRoot = "sherpa-onnx/models/speech-synthesis/vits-melo-tts-zh_en",
+            SherpaModelFile = "model.onnx",
+            SherpaTokensFile = "tokens.txt",
+            SherpaLexiconFile = "lexicon.txt",
+            SherpaDictDir = "dict",
+            SherpaRuleFsts = new[] { "phone.fst", "date.fst", "number.fst", "new_heteronym.fst" },
+            SherpaProvider = "cpu",
+            SherpaNumThreads = 2,
+            SherpaSpeakerId = 0,
+            SherpaSpeed = 1f,
+            SherpaMaxNumSentences = 2,
+            SherpaSilenceScale = 0.2f,
+            SherpaNoiseScale = 0.667f,
+            SherpaNoiseScaleW = 0.8f,
+            SherpaLengthScale = 1f,
             BaseVoiceDescription = "一个温柔、清澈、略带亲近感的少女声音，语速自然，语气像正在陪伴用户的桌宠。",
             DefaultEmotion = "自然",
             AppendEmotionToDescription = true
@@ -67,9 +113,21 @@ public class TTSConfig
 
     public bool IsReady()
     {
-        // 最低限度校验：启动器/配置文件必须明确启用，并填好地址、模型和 Key。
-        return Enabled
-               && !string.IsNullOrWhiteSpace(ApiHost)
+        if (!Enabled)
+        {
+            return false;
+        }
+
+        // 本地模式不需要 API Key，只需要最基础的模型路径字段。
+        if (Mode == TTSRunMode.LocalSherpaOnnx)
+        {
+            return !string.IsNullOrWhiteSpace(SherpaModelRoot)
+                   && !string.IsNullOrWhiteSpace(SherpaModelFile)
+                   && !string.IsNullOrWhiteSpace(SherpaTokensFile);
+        }
+
+        // 远端模式至少要有地址、模型和 Key；具体协议差异留给 TTSAiConnectApi 处理。
+        return !string.IsNullOrWhiteSpace(ApiHost)
                && !string.IsNullOrWhiteSpace(ApiPath)
                && !string.IsNullOrWhiteSpace(ApiKey)
                && ApiKey.IndexOf("PUT_", StringComparison.OrdinalIgnoreCase) < 0
@@ -91,6 +149,37 @@ public class TTSConfig
             FallbackSampleRate = Mathf.Max(8000, FallbackSampleRate),
             FallbackChannels = Mathf.Max(1, FallbackChannels)
         };
+    }
+
+    public string ResolveSherpaPath(string relativeOrAbsolutePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativeOrAbsolutePath))
+        {
+            return string.Empty;
+        }
+
+        // 启动器未来如果给绝对路径，就不再拼 StreamingAssets。
+        if (Path.IsPathRooted(relativeOrAbsolutePath))
+        {
+            return relativeOrAbsolutePath;
+        }
+
+        return Path.Combine(Application.streamingAssetsPath, relativeOrAbsolutePath);
+    }
+
+    public string ResolveSherpaModelFile(string fileOrPath)
+    {
+        if (string.IsNullOrWhiteSpace(fileOrPath))
+        {
+            return string.Empty;
+        }
+
+        if (Path.IsPathRooted(fileOrPath))
+        {
+            return fileOrPath;
+        }
+
+        return Path.Combine(ResolveSherpaPath(SherpaModelRoot), fileOrPath);
     }
 
     private string BuildUrl(string host, string path)
@@ -142,7 +231,7 @@ public static class TTSConfigLoader
 
             if (!config.IsReady())
             {
-                reason = "TTS config is not ready. Enable it and fill values in launcher/config first.";
+                reason = $"TTS config is not ready. Enabled={config.Enabled}, Mode={config.Mode}.";
                 return false;
             }
 
