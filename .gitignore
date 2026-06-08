@@ -104,3 +104,10 @@
 /TianBaiAIc/Assets/StreamingAssets/Whisper/*.bin
 
 /TianBaiAIc/Assets/StreamingAssets/AI/ai_config.json
+/TianBaiAIc/Assets/StreamingAssets/Memory/*
+/TianBaiAic/Assets/StreamingAssets/AI/ai_config.json.meta
+/TianBaiAic/Assets/StreamingAssets/Memory/*
+!/TianBaiAic/Assets/StreamingAssets/Memory/.gitkeep
+/TianBaiAic/Assets/StreamingAssets/AI/tts_config.json
+/TianBaiAic/Assets/StreamingAssets/AI/tts_config.json.meta
+/TianBaiAic/Assets/StreamingAssets/sherpa-onnx/models/*

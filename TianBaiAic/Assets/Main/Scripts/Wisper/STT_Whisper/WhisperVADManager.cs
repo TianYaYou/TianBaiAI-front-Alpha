@@ -18,6 +18,7 @@ public class WhisperVADManager_History : MonoBehaviour
         Idle,
         ListeningForWakeWord,
         ListeningForCommand,
+        WaitingForAI,
         Processing
     }
 
@@ -33,8 +34,18 @@ public class WhisperVADManager_History : MonoBehaviour
     [Header("Wake Settings")]
     public string wakeWord = "天白";
     public bool disableTurboManagerOnThisObject = true;
-    public float wakeWordSilenceSeconds = 1.2f;
-    public float commandSilenceSeconds = 3.0f;
+
+    [Tooltip("唤醒阶段的静音判定时间。越短唤醒越快，但太短可能把一句话切得过碎。")]
+    public float wakeWordSilenceSeconds = 0.6f;
+
+    [Tooltip("指令阶段的静音判定时间。用户停顿超过这个时间后自动提交。")]
+    public float commandSilenceSeconds = 2.0f;
+
+    [Tooltip("如果唤醒词后面已经跟着指令，例如“天白帮我打开设置”，就直接提交后半句，不再要求用户再说一次。")]
+    public bool submitCommandInWakePhrase = true;
+
+    [Tooltip("AI 回答完成后，延迟一点再重新打开麦克风，避免录音组件刚释放就立刻重启。")]
+    public float restartWakeListenDelaySeconds = 0.2f;
 
     private ListenState _currentState = ListenState.Idle;
     private readonly StringBuilder _chatHistory = new StringBuilder();
@@ -62,6 +73,10 @@ public class WhisperVADManager_History : MonoBehaviour
             enabled = false;
             return;
         }
+
+        // 关键：MicrophoneRecord.echo=true 会把录到的音频回放出来，并生成 Unity 临时对象“One shot audio”。
+        // 这个项目只需要识别文本，不需要回放用户自己的声音，所以启动时强制关闭。
+        microphoneRecord.echo = false;
 
         if (actionButton != null) actionButton.interactable = false;
         UpdateUIStatus("<color=#FFA500>System: loading Whisper model...</color>");
@@ -132,6 +147,7 @@ public class WhisperVADManager_History : MonoBehaviour
         buttonText.text = "录音中...";
         buttonText.color = Color.green;
         AppendToHistory("<color=#00FFFF>天白:</color> 我在，请说。");
+        WebDialog.SetInputText("天白正在听");
         UpdateUIStatus("<color=#00FF00><i>[系统：请说指令，停顿后自动发送]</i></color>");
     }
 
@@ -157,6 +173,14 @@ public class WhisperVADManager_History : MonoBehaviour
             if (!string.IsNullOrWhiteSpace(recognizedText) && recognizedText.Contains(wakeWord))
             {
                 Debug.Log($"Wake word detected: {recognizedText}");
+
+                if (TryExtractCommandFromWakeText(recognizedText, out string wakeCommand))
+                {
+                    Debug.Log($"[WhisperVAD] Wake phrase contains command: {wakeCommand}");
+                    SubmitRecognizedCommand(wakeCommand);
+                    return;
+                }
+
                 StartCommandListening();
                 if (actionButton != null) actionButton.interactable = true;
                 return;
@@ -179,10 +203,6 @@ public class WhisperVADManager_History : MonoBehaviour
             return;
         }
 
-        // 到这里说明已经拿到正式指令，先显示在 Whisper 面板，再提交给 UI/AI 链路。
-        buttonText.text = "提交中...";
-        buttonText.color = Color.cyan;
-
         if (string.IsNullOrWhiteSpace(recognizedText))
         {
             AppendToHistory("<color=#808080>用户:</color> (未识别到有效语音)");
@@ -191,25 +211,97 @@ public class WhisperVADManager_History : MonoBehaviour
             return;
         }
 
+        SubmitRecognizedCommand(recognizedText);
+    }
+
+    private void SubmitRecognizedCommand(string recognizedText)
+    {
+        // 到这里说明已经拿到正式指令，先显示在 Whisper 面板，再提交给 UI/AI 链路。
+        _currentState = ListenState.WaitingForAI;
+        buttonText.text = "提交中...";
+        buttonText.color = Color.cyan;
+        if (actionButton != null) actionButton.interactable = false;
+
         AppendToHistory($"<color=#FFFFFF>用户:</color> {recognizedText}");
+        UpdateUIStatus("<color=#00BFFF><i>[系统：已提交给 AI，等待回答完成]</i></color>");
 
         // 语音链路和手动输入保持一致：
         // 先把识别文本写进场景里的 InputField，再调用 WebDialog 的提交逻辑。
-        bool submitted = WebDialog.SubmitText(recognizedText);
+        bool submitted = WebDialog.SubmitText(recognizedText, ScheduleWakeWordRestart);
         Debug.Log($"[WhisperVAD] SubmitText result: {submitted}");
         if (!submitted)
         {
             // 如果 UI 输入框暂时不可用，就直接走 AI 控制器，避免语音结果丢失。
-            AIConversationController.TryAsk(
+            bool requestStarted = AIConversationController.TryAsk(
                 recognizedText,
                 onStreamUpdate: WebDialog.Dialog,
-                onComplete: WebDialog.Dialog,
-                onError: error => WebDialog.Dialog($"AI config or request failed:\n{error}"));
+                onComplete: reply =>
+                {
+                    WebDialog.Dialog(reply);
+                    ScheduleWakeWordRestart();
+                },
+                onError: error =>
+                {
+                    WebDialog.Dialog($"AI config or request failed:\n{error}");
+                    ScheduleWakeWordRestart();
+                });
+            if (!requestStarted)
+            {
+                ScheduleWakeWordRestart();
+            }
+
             Debug.LogWarning("[WhisperVAD] SubmitText failed, fallback to AIConversationController.");
         }
+    }
 
+    private void ScheduleWakeWordRestart()
+    {
+        if (!isActiveAndEnabled) return;
+
+        CancelInvoke(nameof(RestartWakeWordListeningAfterAI));
+        if (restartWakeListenDelaySeconds <= 0f)
+        {
+            RestartWakeWordListeningAfterAI();
+            return;
+        }
+
+        Invoke(nameof(RestartWakeWordListeningAfterAI), restartWakeListenDelaySeconds);
+    }
+
+    private void RestartWakeWordListeningAfterAI()
+    {
+        if (!isActiveAndEnabled || microphoneRecord == null) return;
+
+        Debug.Log("[WhisperVAD] AI finished, restart wake word listening.");
         StartWakeWordListening();
         if (actionButton != null) actionButton.interactable = true;
+    }
+
+    private bool TryExtractCommandFromWakeText(string recognizedText, out string commandText)
+    {
+        commandText = string.Empty;
+        if (!submitCommandInWakePhrase) return false;
+        if (string.IsNullOrWhiteSpace(recognizedText) || string.IsNullOrWhiteSpace(wakeWord)) return false;
+
+        int wakeIndex = recognizedText.IndexOf(wakeWord);
+        if (wakeIndex < 0) return false;
+
+        // 唤醒词后面的内容才是真正指令；前面的噪声或误识别不提交。
+        string tail = recognizedText.Substring(wakeIndex + wakeWord.Length);
+        tail = TrimWakeCommandText(tail);
+        if (string.IsNullOrWhiteSpace(tail)) return false;
+
+        commandText = tail;
+        return true;
+    }
+
+    private static string TrimWakeCommandText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+        // 去掉“天白，”“天白:”后面常见的标点和空格，避免提交内容前面带逗号。
+        char[] separators = { ' ', '　', ',', '.', ':', ';', '，', '。', '：', '；', '、', '！', '!', '？', '?', '-', '—' };
+        return text.Trim().Trim(separators);
     }
 
     void OnDestroy()

@@ -6,6 +6,7 @@ using UnityEngine;
 
 namespace InkBai.MainScene
 {
+    [System.Obsolete("ChatMain is deprecated, please use the new ChatSystem instead.")]
     public class ChatMain : MonoBehaviour, IChatDataInterface
     {
         //public Chat chat;

@@ -13,14 +13,31 @@ public class WebApi : MonoBehaviour
     private const string BASE_URL = "http://127.0.0.1:4070/";
     private const float POLLING_INTERVAL = 0.5f; // Unity 轮询 Python 服务器的频率
 
+    [Header("Legacy Python Backend")]
+    [Tooltip("旧 Python 后端轮询开关。当前 AI 链路已经改为 Unity 直接调用 API，默认关闭避免收到旧 playmusic/dialog 消息。")]
+    public bool enableLegacyPythonPolling = false;
+
+    [Tooltip("是否允许旧后端 playmusic 消息播放音频。当前没有接 TTS 前默认关闭。")]
+    public bool allowLegacyPlayMusic = false;
+
+    [Tooltip("旧调试逻辑：按空格向 Python 后端发测试消息。默认关闭，避免干扰正常操作。")]
+    public bool enableSpaceKeyDemo = false;
+
     // 在 Unity 编辑器中可见，用于演示 (可选)
     [SerializeField] private string unityMessageToSend = "你好，来自 Unity 的消息!";
 
     void Start()
     {
+        webApi = this;
+
+        if (!enableLegacyPythonPolling)
+        {
+            Debug.Log("[WebApi] Legacy Python polling disabled.");
+            return;
+        }
+
         // 开始轮询从 Python 服务器接收消息
         StartCoroutine(PollForIncomingMessages());
-        webApi = this;
     }
 
     /// <summary>
@@ -131,7 +148,7 @@ public class WebApi : MonoBehaviour
     // 示例：你可以在按键事件中触发发送消息
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (enableSpaceKeyDemo && Input.GetKeyDown(KeyCode.Space))
         {
             upmassage(unityMessageToSend);
         }
@@ -215,6 +232,12 @@ public class WebApi : MonoBehaviour
                 break;
             case "playmusic":
                 //Debug.Log($"Unity 收到播放音乐消息{message.time}: {message.message_info}");
+                if (!allowLegacyPlayMusic)
+                {
+                    Debug.Log("[WebApi] Ignored legacy playmusic message because allowLegacyPlayMusic is false.");
+                    break;
+                }
+
                 WebApiPlayMusic playMusic = new WebApiPlayMusic(message.message_info);
                 playMusic?.Doing();
                 break;
