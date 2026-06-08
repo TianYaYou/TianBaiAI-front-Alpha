@@ -22,6 +22,13 @@ public class TTSMain : MonoBehaviour
     [Tooltip("配置文件不存在时自动生成模板，方便第一次运行时看到应该填写哪些字段。")]
     public bool createTemplateIfMissing = true;
 
+    [Header("Startup")]
+    [Tooltip("本地 sherpa-onnx 模式下，场景开始时就加载模型，避免第一次输出时才卡顿。")]
+    public bool preloadLocalModelOnStart = true;
+
+    [Tooltip("预加载失败时输出 warning。远端模式或 TTS 未启用时只会跳过预加载。")]
+    public bool warnIfLocalPreloadFails = true;
+
     [Header("Playback")]
     public AudioSource audioSource;
     public bool stopCurrentBeforePlay = true;
@@ -62,6 +69,14 @@ public class TTSMain : MonoBehaviour
         Instance = this;
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
         if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
+    }
+
+    private void Start()
+    {
+        if (preloadLocalModelOnStart)
+        {
+            PreloadLocalModelIfConfigured();
+        }
     }
 
     private void OnDestroy()
@@ -110,6 +125,11 @@ public class TTSMain : MonoBehaviour
         if (logTTS)
         {
             Debug.Log($"[TTSMain] TTS run mode switched to {runMode}.");
+        }
+
+        if (runMode == TTSRunMode.LocalSherpaOnnx && preloadLocalModelOnStart)
+        {
+            PreloadLocalModelIfConfigured();
         }
     }
 
@@ -242,6 +262,63 @@ public class TTSMain : MonoBehaviour
         {
             audioSource.Stop();
         }
+    }
+
+    /// <summary>
+    /// 如果当前配置是本地 sherpa-onnx，就立刻加载模型。
+    /// 这个方法可以给测试按钮或未来启动器调用；不会等到真正 SpeakAsync 时才加载。
+    /// </summary>
+    public bool PreloadLocalModelIfConfigured()
+    {
+        if (_config == null && !TryLoadConfig(out string reason))
+        {
+            if (logTTS)
+            {
+                Debug.Log($"[TTSMain] Skip local TTS preload: {reason}");
+            }
+
+            return false;
+        }
+
+        if (_config.Mode != TTSRunMode.LocalSherpaOnnx)
+        {
+            if (logTTS)
+            {
+                Debug.Log($"[TTSMain] Skip local TTS preload: current mode is {_config.Mode}.");
+            }
+
+            return false;
+        }
+
+        if (_localSession == null)
+        {
+            _localSession = new TTSSherpaOnnxSession(_config);
+        }
+
+        if (_localSession.IsInitialized)
+        {
+            return true;
+        }
+
+        if (logTTS)
+        {
+            Debug.Log("[TTSMain] Preloading local sherpa-onnx TTS model...");
+        }
+
+        bool ok = _localSession.Preload(error =>
+        {
+            if (warnIfLocalPreloadFails)
+            {
+                Debug.LogWarning($"[TTSMain] {error}");
+            }
+        });
+
+        if (ok && logTTS)
+        {
+            Debug.Log($"[TTSMain] Local sherpa-onnx TTS model is ready. sampleRate={_localSession.SampleRate}, speakers={_localSession.NumSpeakers}");
+        }
+
+        return ok;
     }
 
     private bool TryEnsureSession(out string reason)
