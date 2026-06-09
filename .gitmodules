@@ -1,0 +1,3 @@
+[submodule "TianBai-Launcher"]
+	path = TianBai-Launcher
+	url = https://github.com/TianYaYou/TianBai-Launcher.git
