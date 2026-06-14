@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &428927754
+--- !u!1 &305270877
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,13 +127,13 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 428927761}
-  - component: {fileID: 428927760}
-  - component: {fileID: 428927759}
-  - component: {fileID: 428927758}
-  - component: {fileID: 428927757}
-  - component: {fileID: 428927756}
-  - component: {fileID: 428927755}
+  - component: {fileID: 305270884}
+  - component: {fileID: 305270883}
+  - component: {fileID: 305270882}
+  - component: {fileID: 305270881}
+  - component: {fileID: 305270880}
+  - component: {fileID: 305270879}
+  - component: {fileID: 305270878}
   m_Layer: 0
   m_Name: Camera
   m_TagString: MainCamera
@@ -141,49 +141,49 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &428927755
+--- !u!114 &305270878
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 24efec5a854761e4b966b59a55f7da94, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &428927756
+--- !u!114 &305270879
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d6758912b9781f84ca28be26dac93d46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &428927757
+--- !u!114 &305270880
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b8c1cd9ac5a2abc419c38030330f3c97, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &428927758
+--- !u!114 &305270881
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
@@ -221,21 +221,21 @@ MonoBehaviour:
     m_MipBias: 0
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
---- !u!81 &428927759
+--- !u!81 &305270882
 AudioListener:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   m_Enabled: 1
---- !u!20 &428927760
+--- !u!20 &305270883
 Camera:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
@@ -280,13 +280,13 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!4 &428927761
+--- !u!4 &305270884
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 428927754}
+  m_GameObject: {fileID: 305270877}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: -1}
@@ -342,24 +342,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mainSceneName: Main
   minimumSplashSeconds: 1
-  delayBeforeLoadSeconds: 3
+  delayBeforeLoadSeconds: 5
   loadMainSceneAdditively: 1
   unloadStartupSceneAfterMainActivated: 1
   unloadStartupSceneDelaySeconds: 5
   waitForStartupReadiness: 1
   readinessTimeoutSeconds: 30
-  forceWindowedOnStart: 1
-  forceStartupResolutionOnStart: 1
+  forceWindowedOnStart: 0
+  forceStartupResolutionOnStart: 0
   resizeStartupWindow: 0
   startupWidth: 800
   startupHeight: 450
   centerWindowOnStart: 1
+  delayedEnableBehaviours:
+  - {fileID: 0}
+  delayedEnableSeconds: 0.25
   applyMainResolutionBeforeActivate: 1
   mainWindowWidth: 800
   mainWindowHeight: 450
   fullscreenBeforeActivateMain: 1
   waitOneFrameAfterFullscreen: 1
-  resetWindowPreferencesOnQuit: 1
   statusText: {fileID: 1479087159}
   startupVisualRoot: {fileID: 675670276}
   autoBindStartupVisualRoot: 1
@@ -783,7 +785,7 @@ CanvasRenderer:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 305270884}
   - {fileID: 675670280}
   - {fileID: 703055711}
-  - {fileID: 428927761}
   - {fileID: 631814526}

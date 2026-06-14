@@ -43,11 +43,11 @@ public class StartupSceneLoader : MonoBehaviour
     public float readinessTimeoutSeconds = 30f;
 
     [Header("Startup Window")]
-    [Tooltip("启动时强制恢复窗口化。Unity 会记住上次运行的全屏状态，这里用于覆盖注册表里的历史值。")]
-    public bool forceWindowedOnStart = true;
+    [Tooltip("保留字段用于兼容旧场景。当前不再调用 Unity Screen API 强制窗口化，避免覆盖 TransparentSetup 设置的窗口样式。")]
+    public bool forceWindowedOnStart = false;
 
-    [Tooltip("启动时强制恢复启动页尺寸。用于避免上次全屏运行留下 1920x1080 一类的历史分辨率。")]
-    public bool forceStartupResolutionOnStart = true;
+    [Tooltip("是否用 Win32 SetWindowPos 调整启动页尺寸。不使用 Screen.SetResolution，避免重置无边框/透明样式。")]
+    public bool forceStartupResolutionOnStart = false;
 
     [Tooltip("是否由加载脚本强制设置启动页窗口大小。通常关闭，让已有窗口脚本负责无边框/透明/尺寸。")]
     public bool resizeStartupWindow = false;
@@ -60,6 +60,13 @@ public class StartupSceneLoader : MonoBehaviour
 
     [Tooltip("启动时把窗口移动到屏幕中央。")]
     public bool centerWindowOnStart = true;
+
+    [Header("Window Bootstrap")]
+    [Tooltip("启动早期需要延迟启用的组件。用于让复杂窗口脚本在 Unity 窗口句柄稳定后再执行自己的 Start。")]
+    public Behaviour[] delayedEnableBehaviours;
+
+    [Tooltip("延迟启用窗口相关组件的等待时间。只延迟组件启用，不修改组件内部逻辑。")]
+    public float delayedEnableSeconds = 0.25f;
 
     [Header("Main Window")]
     [Tooltip("激活主场景前是否应用主界面窗口分辨率。仅在 fullscreenBeforeActivateMain 关闭时生效。")]
@@ -77,9 +84,6 @@ public class StartupSceneLoader : MonoBehaviour
     [Tooltip("切全屏后等待一帧再激活主场景，让窗口状态先稳定下来。")]
     public bool waitOneFrameAfterFullscreen = true;
 
-    [Tooltip("退出程序时把 Unity 记住的窗口状态恢复为启动页尺寸，避免下次启动直接全屏。")]
-    public bool resetWindowPreferencesOnQuit = true;
-
     [Header("UI")]
     [Tooltip("启动页上的 TMP 文本。为空时会自动寻找场景里的第一个 TextMeshProUGUI。")]
     public TextMeshProUGUI statusText;
@@ -95,19 +99,6 @@ public class StartupSceneLoader : MonoBehaviour
 
     [Tooltip("是否在 Console 输出加载过程，方便调试打包后的启动流程。")]
     public bool logStartup = true;
-
-    /// <summary>
-    /// Unity 会在脚本运行前读取注册表里的历史窗口状态。
-    /// 这里用 BeforeSceneLoad 做第一层兜底，尽量在场景脚本 Awake 之前把启动窗口拉回窗口化。
-    /// </summary>
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    private static void ForceWindowedBeforeSceneLoad()
-    {
-#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-        Screen.fullScreenMode = FullScreenMode.Windowed;
-        Screen.SetResolution(DefaultStartupWidth, DefaultStartupHeight, false);
-#endif
-    }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
@@ -138,6 +129,11 @@ public class StartupSceneLoader : MonoBehaviour
 
     private IEnumerator Start()
     {
+        if (delayedEnableBehaviours != null && delayedEnableBehaviours.Length > 0)
+        {
+            StartCoroutine(EnableStartupBehavioursLater());
+        }
+
         BindStatusTextIfNeeded();
         BindStartupVisualRootIfNeeded();
 
@@ -211,6 +207,22 @@ public class StartupSceneLoader : MonoBehaviour
         if (loadMainSceneAdditively)
         {
             yield return FinishAdditiveMainSceneActivation(loadOperation);
+        }
+    }
+
+    private IEnumerator EnableStartupBehavioursLater()
+    {
+        if (delayedEnableSeconds > 0f)
+        {
+            yield return new WaitForSecondsRealtime(delayedEnableSeconds);
+        }
+
+        foreach (Behaviour behaviour in delayedEnableBehaviours)
+        {
+            if (behaviour != null && !behaviour.enabled)
+            {
+                behaviour.enabled = true;
+            }
         }
     }
 
@@ -431,14 +443,6 @@ public class StartupSceneLoader : MonoBehaviour
         startupWidth = Mathf.Max(1, startupWidth);
         startupHeight = Mathf.Max(1, startupHeight);
 
-        if (resizeStartupWindow)
-        {
-            // 正常启动链路里，窗口尺寸/无边框/透明由专门的窗口脚本负责。
-            // 这个开关只用于测试或兜底，避免加载器和窗口脚本互相抢状态。
-            Screen.fullScreenMode = FullScreenMode.Windowed;
-            Screen.SetResolution(startupWidth, startupHeight, false);
-        }
-
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         if (!centerWindowOnStart) return;
 
@@ -469,7 +473,7 @@ public class StartupSceneLoader : MonoBehaviour
 
     private void ApplyEarlyWindowedMode()
     {
-        if (!forceWindowedOnStart)
+        if (!forceWindowedOnStart && !forceStartupResolutionOnStart)
         {
             return;
         }
@@ -477,33 +481,38 @@ public class StartupSceneLoader : MonoBehaviour
         startupWidth = Mathf.Max(1, startupWidth);
         startupHeight = Mathf.Max(1, startupHeight);
 
-        // Unity Standalone 会把上次运行的全屏/分辨率写进注册表。
-        // 如果不在启动页最早阶段覆盖，构建包可能无视 Player Settings，直接按历史全屏启动。
-        Screen.fullScreenMode = FullScreenMode.Windowed;
-        if (forceStartupResolutionOnStart)
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        IntPtr hwnd = GetActiveWindow();
+        if (hwnd == IntPtr.Zero)
         {
-            Screen.SetResolution(startupWidth, startupHeight, false);
+            return;
         }
 
-        if (logStartup)
+        if (forceStartupResolutionOnStart)
         {
-            Debug.Log($"[StartupSceneLoader] 已强制恢复启动窗口：{Screen.fullScreenMode}, {startupWidth}x{startupHeight}");
+            int screenWidth = GetSystemMetrics(0);
+            int screenHeight = GetSystemMetrics(1);
+            int x = Mathf.Max(0, (screenWidth - startupWidth) / 2);
+            int y = Mathf.Max(0, (screenHeight - startupHeight) / 2);
+            SetWindowPos(hwnd, HWND_TOP, x, y, startupWidth, startupHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+#endif
+
+        if (logStartup && forceWindowedOnStart)
+        {
+            Debug.Log("[StartupSceneLoader] 已跳过 Unity Screen 强制窗口化，避免覆盖 TransparentSetup 的窗口样式。");
         }
     }
 
     private void ApplyMainWindowFullscreen()
     {
-        Resolution resolution = Screen.currentResolution;
-        // 这里不再使用 FullScreenWindow。Unity 会把原生全屏状态写入注册表，
-        // 导致下一次进程创建窗口时直接全屏，启动页脚本来不及阻止。
-        Screen.fullScreenMode = FullScreenMode.Windowed;
-        Screen.SetResolution(resolution.width, resolution.height, false);
-
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IntPtr hwnd = GetActiveWindow();
         if (hwnd != IntPtr.Zero)
         {
-            SetWindowPos(hwnd, HWND_TOP, 0, 0, resolution.width, resolution.height, SWP_SHOWWINDOW);
+            int screenWidth = GetSystemMetrics(0);
+            int screenHeight = GetSystemMetrics(1);
+            SetWindowPos(hwnd, HWND_TOP, 0, 0, screenWidth, screenHeight, SWP_SHOWWINDOW);
         }
 #endif
     }
@@ -513,26 +522,17 @@ public class StartupSceneLoader : MonoBehaviour
         mainWindowWidth = Mathf.Max(1, mainWindowWidth);
         mainWindowHeight = Mathf.Max(1, mainWindowHeight);
 
-        // 主界面现在走窗口化运行链路，这里只调整分辨率，不切全屏。
-        Screen.fullScreenMode = FullScreenMode.Windowed;
-        Screen.SetResolution(mainWindowWidth, mainWindowHeight, false);
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        IntPtr hwnd = GetActiveWindow();
+        if (hwnd != IntPtr.Zero)
+        {
+            SetWindowPos(hwnd, HWND_TOP, 0, 0, mainWindowWidth, mainWindowHeight, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+#endif
 
         if (logStartup)
         {
             Debug.Log($"[StartupSceneLoader] 已应用主界面窗口分辨率：{mainWindowWidth}x{mainWindowHeight}");
         }
-    }
-
-    private void OnApplicationQuit()
-    {
-        if (!resetWindowPreferencesOnQuit)
-        {
-            return;
-        }
-
-        // Unity Standalone 会记住最后一次窗口状态。
-        // 退出时恢复启动页尺寸，让下一次启动仍然从横屏启动页开始，而不是直接全屏。
-        Screen.fullScreenMode = FullScreenMode.Windowed;
-        Screen.SetResolution(DefaultStartupWidth, DefaultStartupHeight, false);
     }
 }
