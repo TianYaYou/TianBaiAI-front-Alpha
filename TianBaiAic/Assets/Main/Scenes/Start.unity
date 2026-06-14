@@ -305,6 +305,7 @@ GameObject:
   m_Component:
   - component: {fileID: 631814526}
   - component: {fileID: 631814527}
+  - component: {fileID: 631814528}
   m_Layer: 0
   m_Name: StartupSceneLoader
   m_TagString: Untagged
@@ -340,7 +341,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mainSceneName: Main
-  minimumSplashSeconds: 0.8
+  minimumSplashSeconds: 1
+  delayBeforeLoadSeconds: 3
+  loadMainSceneAdditively: 1
+  unloadStartupSceneAfterMainActivated: 1
+  unloadStartupSceneDelaySeconds: 5
+  waitForStartupReadiness: 1
+  readinessTimeoutSeconds: 30
   forceWindowedOnStart: 1
   forceStartupResolutionOnStart: 1
   resizeStartupWindow: 0
@@ -352,8 +359,33 @@ MonoBehaviour:
   mainWindowHeight: 450
   fullscreenBeforeActivateMain: 1
   waitOneFrameAfterFullscreen: 1
+  resetWindowPreferencesOnQuit: 1
   statusText: {fileID: 1479087159}
+  startupVisualRoot: {fileID: 675670276}
+  autoBindStartupVisualRoot: 1
+  hideStartupVisualsBeforeFullscreen: 1
   logStartup: 1
+--- !u!114 &631814528
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 631814525}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09fffa5fe3b39e5428573fe0e0382df6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  configPathOverride: 
+  createTemplateIfMissing: 1
+  preloadLocalModelOnStart: 1
+  warnIfLocalPreloadFails: 1
+  audioSource: {fileID: 0}
+  stopCurrentBeforePlay: 1
+  autoPlay: 1
+  pcmVolume: 1
+  logTTS: 1
 --- !u!1 &675670276
 GameObject:
   m_ObjectHideFlags: 0
@@ -570,7 +602,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -151, y: -77.8}
+  m_AnchoredPosition: {x: -115.2, y: -67.7}
   m_SizeDelta: {x: 255.3866, y: 14.8365}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1479087159
@@ -704,10 +736,10 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 675670280}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 2, y: 2}
+  m_SizeDelta: {x: 560, y: 315}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1769602720
 MonoBehaviour:

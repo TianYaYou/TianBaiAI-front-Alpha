@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -11,7 +12,7 @@ using UnityEngine;
 /// 职责边界：读取配置、选择本地/远端 TTS 会话、把生成结果转成 AudioClip 并交给 AudioSource 播放。
 /// 天白主链路只需要继续调用 TrySpeak/SpeakAsync，不需要关心底层是 sherpa-onnx 还是远端 URL。
 /// </summary>
-public class TTSMain : MonoBehaviour
+public class TTSMain : MonoBehaviour, IStartupReadiness
 {
     public static TTSMain Instance { get; private set; }
 
@@ -50,6 +51,8 @@ public class TTSMain : MonoBehaviour
     public string LastContent { get; private set; }
     public TTSConfig Config => _config;
     public TTSRunMode RunMode => _config != null ? _config.Mode : TTSRunMode.RemoteUrl;
+    public bool IsStartupReady { get; private set; } = true;
+    public string StartupReadinessMessage { get; private set; } = "正在加载本地 TTS 模型...";
 
     private readonly Dictionary<string, string> _emotionDescriptions = new Dictionary<string, string>
     {
@@ -66,17 +69,31 @@ public class TTSMain : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            // 启动场景会提前创建持久化 TTSMain。Main 场景里的重复组件不再重新初始化，
+            // 避免切到主界面后再次同步加载 sherpa 模型造成长时间卡顿。
+            Destroy(this);
+            return;
+        }
+
         Instance = this;
+        DontDestroyOnLoad(gameObject);
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
         if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
     }
 
-    private void Start()
+    private IEnumerator Start()
     {
         if (preloadLocalModelOnStart)
         {
+            IsStartupReady = false;
+            StartupReadinessMessage = "正在加载本地 TTS 模型...";
+            yield return null;
             PreloadLocalModelIfConfigured();
         }
+
+        IsStartupReady = true;
     }
 
     private void OnDestroy()

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using TMPro;
 using UnityEngine;
@@ -20,7 +21,26 @@ public class StartupSceneLoader : MonoBehaviour
     public string mainSceneName = "Main";
 
     [Tooltip("场景加载到 90% 后至少停留多久，避免启动页一闪而过。")]
-    public float minimumSplashSeconds = 0.8f;
+    public float minimumSplashSeconds = 1f;
+
+    [Tooltip("正式开始加载主场景前额外等待多久，让启动页先稳定显示一会儿。")]
+    public float delayBeforeLoadSeconds = 0.8f;
+
+    [Tooltip("用 Additive 加载主场景，先让 Main 上屏，再延迟卸载启动场景，减少切换瞬间的 GC/卸载压力。")]
+    public bool loadMainSceneAdditively = true;
+
+    [Tooltip("Additive 模式下，主场景激活后是否延迟卸载启动场景。启动场景很小，也可以临时关闭用于排查。")]
+    public bool unloadStartupSceneAfterMainActivated = true;
+
+    [Tooltip("主场景激活后延迟多久卸载启动场景，把卸载和 GC 从切换瞬间挪开。")]
+    public float unloadStartupSceneDelaySeconds = 5f;
+
+    [Header("Readiness")]
+    [Tooltip("是否等待启动期模块完成准备。实现 IStartupReadiness 的组件会被统一等待。")]
+    public bool waitForStartupReadiness = true;
+
+    [Tooltip("等待启动期模块的最长秒数。小于等于 0 表示一直等待。")]
+    public float readinessTimeoutSeconds = 30f;
 
     [Header("Startup Window")]
     [Tooltip("启动时强制恢复窗口化。Unity 会记住上次运行的全屏状态，这里用于覆盖注册表里的历史值。")]
@@ -57,9 +77,21 @@ public class StartupSceneLoader : MonoBehaviour
     [Tooltip("切全屏后等待一帧再激活主场景，让窗口状态先稳定下来。")]
     public bool waitOneFrameAfterFullscreen = true;
 
+    [Tooltip("退出程序时把 Unity 记住的窗口状态恢复为启动页尺寸，避免下次启动直接全屏。")]
+    public bool resetWindowPreferencesOnQuit = true;
+
     [Header("UI")]
     [Tooltip("启动页上的 TMP 文本。为空时会自动寻找场景里的第一个 TextMeshProUGUI。")]
     public TextMeshProUGUI statusText;
+
+    [Tooltip("全屏切换前要隐藏的启动页视觉根节点。为空时会自动寻找 Start 场景里的第一个 Canvas。")]
+    public GameObject startupVisualRoot;
+
+    [Tooltip("未手动指定 startupVisualRoot 时，是否自动绑定场景里的第一个 Canvas。")]
+    public bool autoBindStartupVisualRoot = true;
+
+    [Tooltip("切全屏前先隐藏启动页，避免窗口从 800x450 放大到全屏时把启动页也一起放大一帧。")]
+    public bool hideStartupVisualsBeforeFullscreen = true;
 
     [Tooltip("是否在 Console 输出加载过程，方便调试打包后的启动流程。")]
     public bool logStartup = true;
@@ -94,23 +126,36 @@ public class StartupSceneLoader : MonoBehaviour
     private static extern int GetSystemMetrics(int nIndex);
 #endif
 
+    private Scene _startupScene;
+
     private void Awake()
     {
+        // 进入 Main 场景后这个加载器仍需存活到退出，用于恢复 Unity 记住的窗口状态。
+        _startupScene = gameObject.scene;
+        DontDestroyOnLoad(gameObject);
         ApplyEarlyWindowedMode();
     }
 
     private IEnumerator Start()
     {
         BindStatusTextIfNeeded();
+        BindStartupVisualRootIfNeeded();
 
         SetStatus("正在准备启动窗口...");
         ApplyStartupWindow();
         yield return null;
 
+        if (delayBeforeLoadSeconds > 0f)
+        {
+            SetStatus("正在准备启动资源...");
+            yield return new WaitForSecondsRealtime(delayBeforeLoadSeconds);
+        }
+
         float startTime = Time.realtimeSinceStartup;
         SetStatus("正在加载主场景...");
 
-        AsyncOperation loadOperation = SceneManager.LoadSceneAsync(mainSceneName, LoadSceneMode.Single);
+        LoadSceneMode loadMode = loadMainSceneAdditively ? LoadSceneMode.Additive : LoadSceneMode.Single;
+        AsyncOperation loadOperation = SceneManager.LoadSceneAsync(mainSceneName, loadMode);
         if (loadOperation == null)
         {
             SetStatus($"加载失败：没有找到场景 {mainSceneName}");
@@ -135,10 +180,17 @@ public class StartupSceneLoader : MonoBehaviour
             yield return new WaitForSecondsRealtime(minimumSplashSeconds - elapsed);
         }
 
+        if (waitForStartupReadiness)
+        {
+            yield return WaitForStartupReadiness();
+        }
+
         SetStatus("加载完成，正在进入主界面...");
 
         if (fullscreenBeforeActivateMain)
         {
+            HideStartupVisualsBeforeWindowChange();
+            yield return null;
             ApplyMainWindowFullscreen();
             if (waitOneFrameAfterFullscreen)
             {
@@ -147,11 +199,17 @@ public class StartupSceneLoader : MonoBehaviour
         }
         else if (applyMainResolutionBeforeActivate)
         {
+            HideStartupVisualsBeforeWindowChange();
+            yield return null;
             ApplyMainWindowResolution();
             yield return null;
         }
 
         loadOperation.allowSceneActivation = true;
+        if (loadMainSceneAdditively)
+        {
+            yield return FinishAdditiveMainSceneActivation(loadOperation);
+        }
     }
 
     private void BindStatusTextIfNeeded()
@@ -163,6 +221,151 @@ public class StartupSceneLoader : MonoBehaviour
 #else
         statusText = FindObjectOfType<TextMeshProUGUI>();
 #endif
+    }
+
+    private void BindStartupVisualRootIfNeeded()
+    {
+        if (startupVisualRoot != null || !autoBindStartupVisualRoot)
+        {
+            return;
+        }
+
+#if UNITY_2023_1_OR_NEWER
+        Canvas canvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
+#else
+        Canvas canvas = FindObjectOfType<Canvas>(true);
+#endif
+        if (canvas != null && canvas.gameObject != gameObject)
+        {
+            startupVisualRoot = canvas.gameObject;
+        }
+    }
+
+    private IEnumerator WaitForStartupReadiness()
+    {
+        List<IStartupReadiness> readinessItems = CollectStartupReadinessItems();
+        if (readinessItems.Count == 0)
+        {
+            SetStatus("启动模块准备完成。");
+            yield break;
+        }
+
+        float startTime = Time.realtimeSinceStartup;
+        while (true)
+        {
+            IStartupReadiness waitingItem = FindFirstWaitingReadiness(readinessItems);
+            if (waitingItem == null)
+            {
+                SetStatus("启动模块准备完成。");
+                yield break;
+            }
+
+            string waitingMessage = string.IsNullOrWhiteSpace(waitingItem.StartupReadinessMessage)
+                ? "正在等待启动模块准备完成..."
+                : waitingItem.StartupReadinessMessage;
+            SetStatus(waitingMessage);
+
+            if (readinessTimeoutSeconds > 0f
+                && Time.realtimeSinceStartup - startTime > readinessTimeoutSeconds)
+            {
+                Debug.LogWarning($"[StartupSceneLoader] 等待启动模块超时，启动流程将继续。最后等待项：{waitingMessage}");
+                yield break;
+            }
+
+            yield return null;
+        }
+    }
+
+    private List<IStartupReadiness> CollectStartupReadinessItems()
+    {
+        var readinessItems = new List<IStartupReadiness>();
+
+#if UNITY_2023_1_OR_NEWER
+        MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+#else
+        MonoBehaviour[] behaviours = FindObjectsOfType<MonoBehaviour>(true);
+#endif
+        foreach (MonoBehaviour behaviour in behaviours)
+        {
+            if (behaviour == null || behaviour == this)
+            {
+                continue;
+            }
+
+            if (behaviour is IStartupReadiness readiness)
+            {
+                readinessItems.Add(readiness);
+            }
+        }
+
+        return readinessItems;
+    }
+
+    private static IStartupReadiness FindFirstWaitingReadiness(List<IStartupReadiness> readinessItems)
+    {
+        foreach (IStartupReadiness readiness in readinessItems)
+        {
+            if (readiness != null && !readiness.IsStartupReady)
+            {
+                return readiness;
+            }
+        }
+
+        return null;
+    }
+
+    private void HideStartupVisualsBeforeWindowChange()
+    {
+        if (!hideStartupVisualsBeforeFullscreen || startupVisualRoot == null)
+        {
+            return;
+        }
+
+        // 先隐藏启动页 UI，再等待一帧切换窗口尺寸/全屏，避免启动页在切换瞬间被放大。
+        startupVisualRoot.SetActive(false);
+        if (logStartup)
+        {
+            Debug.Log($"[StartupSceneLoader] 已隐藏启动页视觉根节点：{startupVisualRoot.name}");
+        }
+    }
+
+    private IEnumerator FinishAdditiveMainSceneActivation(AsyncOperation loadOperation)
+    {
+        while (!loadOperation.isDone)
+        {
+            yield return null;
+        }
+
+        Scene mainScene = SceneManager.GetSceneByName(mainSceneName);
+        if (mainScene.IsValid() && mainScene.isLoaded)
+        {
+            SceneManager.SetActiveScene(mainScene);
+        }
+
+        if (unloadStartupSceneAfterMainActivated)
+        {
+            StartCoroutine(UnloadStartupSceneLater());
+        }
+    }
+
+    private IEnumerator UnloadStartupSceneLater()
+    {
+        if (unloadStartupSceneDelaySeconds > 0f)
+        {
+            yield return new WaitForSecondsRealtime(unloadStartupSceneDelaySeconds);
+        }
+
+        if (!_startupScene.IsValid() || !_startupScene.isLoaded)
+        {
+            yield break;
+        }
+
+        // Start 场景只保留加载页 UI。延迟卸载它可以避免切换 Main 的瞬间同时触发卸载和 GC。
+        AsyncOperation unloadOperation = SceneManager.UnloadSceneAsync(_startupScene);
+        while (unloadOperation != null && !unloadOperation.isDone)
+        {
+            yield return null;
+        }
     }
 
     private void SetStatus(string message)
@@ -246,9 +449,18 @@ public class StartupSceneLoader : MonoBehaviour
     private void ApplyMainWindowFullscreen()
     {
         Resolution resolution = Screen.currentResolution;
-        // 当前阶段主界面先使用全屏窗口模式，后续自动窗口方案完成后再替换这里。
-        Screen.fullScreenMode = FullScreenMode.FullScreenWindow;
-        Screen.SetResolution(resolution.width, resolution.height, true);
+        // 这里不再使用 FullScreenWindow。Unity 会把原生全屏状态写入注册表，
+        // 导致下一次进程创建窗口时直接全屏，启动页脚本来不及阻止。
+        Screen.fullScreenMode = FullScreenMode.Windowed;
+        Screen.SetResolution(resolution.width, resolution.height, false);
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        IntPtr hwnd = GetActiveWindow();
+        if (hwnd != IntPtr.Zero)
+        {
+            SetWindowPos(hwnd, HWND_TOP, 0, 0, resolution.width, resolution.height, SWP_SHOWWINDOW);
+        }
+#endif
     }
 
     private void ApplyMainWindowResolution()
@@ -264,5 +476,18 @@ public class StartupSceneLoader : MonoBehaviour
         {
             Debug.Log($"[StartupSceneLoader] 已应用主界面窗口分辨率：{mainWindowWidth}x{mainWindowHeight}");
         }
+    }
+
+    private void OnApplicationQuit()
+    {
+        if (!resetWindowPreferencesOnQuit)
+        {
+            return;
+        }
+
+        // Unity Standalone 会记住最后一次窗口状态。
+        // 退出时恢复启动页尺寸，让下一次启动仍然从横屏启动页开始，而不是直接全屏。
+        Screen.fullScreenMode = FullScreenMode.Windowed;
+        Screen.SetResolution(DefaultStartupWidth, DefaultStartupHeight, false);
     }
 }
