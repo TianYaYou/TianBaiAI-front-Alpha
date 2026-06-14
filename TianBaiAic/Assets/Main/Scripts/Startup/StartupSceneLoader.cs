@@ -153,6 +153,7 @@ public class StartupSceneLoader : MonoBehaviour
 
         float startTime = Time.realtimeSinceStartup;
         SetStatus("正在加载主场景...");
+        DisableStartupEventSystemsBeforeMainLoad();
 
         LoadSceneMode loadMode = loadMainSceneAdditively ? LoadSceneMode.Additive : LoadSceneMode.Single;
         AsyncOperation loadOperation = SceneManager.LoadSceneAsync(mainSceneName, loadMode);
@@ -205,6 +206,7 @@ public class StartupSceneLoader : MonoBehaviour
             yield return null;
         }
 
+        DisableStartupSceneRuntimeObjectsBeforeMainActivation();
         loadOperation.allowSceneActivation = true;
         if (loadMainSceneAdditively)
         {
@@ -326,6 +328,49 @@ public class StartupSceneLoader : MonoBehaviour
         if (logStartup)
         {
             Debug.Log($"[StartupSceneLoader] 已隐藏启动页视觉根节点：{startupVisualRoot.name}");
+        }
+    }
+
+    private void DisableStartupEventSystemsBeforeMainLoad()
+    {
+        if (!_startupScene.IsValid() || !_startupScene.isLoaded)
+        {
+            return;
+        }
+
+        // 启动页没有交互需求时，提前关闭 EventSystem，避免 Additive 加载 Main 后出现双 EventSystem。
+        foreach (GameObject root in _startupScene.GetRootGameObjects())
+        {
+            DisableComponentsInChildren<UnityEngine.EventSystems.EventSystem>(root);
+        }
+    }
+
+    private void DisableStartupSceneRuntimeObjectsBeforeMainActivation()
+    {
+        if (!_startupScene.IsValid() || !_startupScene.isLoaded)
+        {
+            return;
+        }
+
+        // Additive 加载时 Start 和 Main 会短暂共存。进入 Main 前先关闭启动场景的输入、声音和相机，
+        // 避免出现两个 EventSystem/AudioListener，也避免 Main 场景脚本缓存到即将卸载的启动相机。
+        foreach (GameObject root in _startupScene.GetRootGameObjects())
+        {
+            DisableComponentsInChildren<UnityEngine.EventSystems.EventSystem>(root);
+            DisableComponentsInChildren<AudioListener>(root);
+            DisableComponentsInChildren<Camera>(root);
+        }
+    }
+
+    private static void DisableComponentsInChildren<T>(GameObject root) where T : Behaviour
+    {
+        T[] components = root.GetComponentsInChildren<T>(true);
+        foreach (T component in components)
+        {
+            if (component != null)
+            {
+                component.enabled = false;
+            }
         }
     }
 
