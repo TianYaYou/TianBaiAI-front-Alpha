@@ -30,6 +30,24 @@ public sealed class TTSSherpaOnnxSession : IDisposable
     }
 
     /// <summary>
+    /// 主动加载本地 sherpa-onnx 模型。
+    /// TTSMain 会在场景开始时调用它，避免第一次真正说话时才初始化模型导致明显卡顿。
+    /// </summary>
+    public bool Preload(Action<string> onError = null)
+    {
+        try
+        {
+            EnsureInitialized();
+            return true;
+        }
+        catch (Exception e)
+        {
+            onError?.Invoke($"本地 sherpa-onnx TTS 预加载失败: {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 生成语音。
     /// description 参数是为了和远端 TTSAiConnectApi 保持相同调用形状；本地 VITS 模型目前不会读取声音描述。
     /// </summary>
