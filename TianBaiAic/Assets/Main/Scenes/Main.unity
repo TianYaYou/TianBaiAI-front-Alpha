@@ -24965,6 +24965,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 53e998e6301818e459c6ceee6de77736, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  dragHitCollider: {fileID: 0}
+  includeChildColliders: 1
+  selectCharacterOnClick: 1
+  deselectWhenClickOutside: 1
+  dragStartThresholdPixels: 8
+  allowAltWheelResize: 1
+  requireHoverForAltWheelResize: 0
+  logInteraction: 0
 --- !u!43 &495548824
 Mesh:
   m_ObjectHideFlags: 0
@@ -65343,6 +65351,18 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 2138101439}
+    - target: {fileID: 4488409166967179451, guid: 71ad258c746947d48b32e49acaa2a255, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4488409166967179451, guid: 71ad258c746947d48b32e49acaa2a255, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4488409166967179451, guid: 71ad258c746947d48b32e49acaa2a255, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.6
+      objectReference: {fileID: 0}
     - target: {fileID: 4488409166967179451, guid: 71ad258c746947d48b32e49acaa2a255, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
