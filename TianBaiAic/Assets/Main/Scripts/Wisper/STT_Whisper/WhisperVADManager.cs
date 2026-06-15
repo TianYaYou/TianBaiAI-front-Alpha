@@ -10,7 +10,7 @@ using Whisper.Utils;
 /// 负责两段式录音：先监听唤醒词，再监听真正的用户指令；
 /// 指令识别完成后会交给 WebDialog.SubmitText，让语音链路和手动输入共用同一套对话逻辑。
 /// </summary>
-public class WhisperVADManager_History : MonoBehaviour
+public class WhisperVADManager_History : MonoBehaviour, IStartupReadiness
 {
     // 当前监听状态。用状态机区分“唤醒词录音”和“正式指令录音”，避免把唤醒词直接发给 AI。
     public enum ListenState
@@ -47,11 +47,23 @@ public class WhisperVADManager_History : MonoBehaviour
     [Tooltip("AI 回答完成后，延迟一点再重新打开麦克风，避免录音组件刚释放就立刻重启。")]
     public float restartWakeListenDelaySeconds = 0.2f;
 
+    [Header("Startup")]
+    [Tooltip("启动时主动等待 Whisper 模型完成初始化，让第一次唤醒前就把模型热好。")]
+    public bool preloadWhisperModelOnStart = true;
+
+    [Tooltip("把当前 Whisper 预加载状态暴露给启动页。StartupSceneLoader 会读取这个状态，决定是否继续进入主界面。")]
+    public bool blockStartupUntilModelReady = true;
+
     private ListenState _currentState = ListenState.Idle;
     private readonly StringBuilder _chatHistory = new StringBuilder();
+    public bool IsStartupReady { get; private set; } = true;
+    public string StartupReadinessMessage { get; private set; } = "正在加载 Whisper 模型...";
 
     void Awake()
     {
+        IsStartupReady = !blockStartupUntilModelReady;
+        StartupReadinessMessage = "正在加载 Whisper 模型...";
+
         // 场景里可能同时挂了 WhisperTurboManager；这里默认关闭它，避免两个录音器同时抢麦克风。
         if (!disableTurboManagerOnThisObject) return;
 
@@ -70,6 +82,10 @@ public class WhisperVADManager_History : MonoBehaviour
         if (whisperManager == null || microphoneRecord == null || tmpText == null || buttonText == null)
         {
             Debug.LogError("WhisperVADManager_History setup failed: missing references.");
+            // 引用缺失时不能一直卡住启动流程，所以这里直接标记为“已完成”，
+            // 让启动页继续进入主界面，同时在 Console 里保留错误。
+            IsStartupReady = true;
+            StartupReadinessMessage = "Whisper 引用缺失，已跳过预加载。";
             enabled = false;
             return;
         }
@@ -82,7 +98,18 @@ public class WhisperVADManager_History : MonoBehaviour
         UpdateUIStatus("<color=#FFA500>System: loading Whisper model...</color>");
 
         // Whisper 模型初始化完成后再开始监听，否则第一次录音可能无法被识别。
-        await whisperManager.InitModel();
+        // 这里不直接裸调 InitModel，而是统一走 EnsureWhisperModelReadyAsync：
+        // 1. 如果模型还没开始加载，就主动触发加载；
+        // 2. 如果其他组件已经开始加载，就等待它加载完；
+        // 3. 如果加载失败，就给出状态并放行启动流程，避免一直卡在启动页。
+        bool modelReady = await EnsureWhisperModelReadyAsync();
+        if (!modelReady)
+        {
+            UpdateUIStatus("<color=#FF6666>System: Whisper model init failed.</color>");
+            AppendToHistory("<color=#FF6666>系统:</color> Whisper 模型初始化失败，语音输入暂时不可用。");
+            if (actionButton != null) actionButton.interactable = false;
+            return;
+        }
 
         microphoneRecord.vadStop = true;
         microphoneRecord.OnRecordStop -= OnRecordStop;
@@ -97,6 +124,51 @@ public class WhisperVADManager_History : MonoBehaviour
 
         AppendToHistory($"<color=#00FFFF>天白:</color> 你好，请说唤醒词 \"{wakeWord}\"。");
         StartWakeWordListening();
+    }
+
+    /// <summary>
+    /// 确保 Whisper 模型已经可用。
+    /// 这个方法专门处理“模型正在别处加载”的情况，避免重复调用 InitModel 后直接返回，
+    /// 但本脚本误以为模型已经就绪。
+    /// </summary>
+    private async System.Threading.Tasks.Task<bool> EnsureWhisperModelReadyAsync()
+    {
+        if (whisperManager == null)
+        {
+            IsStartupReady = true;
+            StartupReadinessMessage = "WhisperManager 缺失，已跳过预加载。";
+            return false;
+        }
+
+        StartupReadinessMessage = preloadWhisperModelOnStart
+            ? "正在预加载 Whisper 模型..."
+            : "正在等待 Whisper 模型初始化...";
+
+        // 不管是否勾选“预加载”，真正开始监听前都必须确保模型已经可用。
+        // preloadWhisperModelOnStart 主要影响的是“是否把这一步视为启动阶段任务”以及提示文案，
+        // 不是完全跳过模型初始化。
+        if (!whisperManager.IsLoaded && !whisperManager.IsLoading)
+        {
+            await whisperManager.InitModel();
+        }
+
+        while (whisperManager.IsLoading)
+        {
+            await System.Threading.Tasks.Task.Yield();
+        }
+
+        if (whisperManager.IsLoaded)
+        {
+            IsStartupReady = true;
+            StartupReadinessMessage = "Whisper 模型准备完成。";
+            return true;
+        }
+
+        // 加载失败时不继续阻塞启动页，但保留失败状态给界面和日志看。
+        IsStartupReady = true;
+        StartupReadinessMessage = "Whisper 模型初始化失败，已跳过预加载。";
+        Debug.LogWarning("[WhisperVAD] Whisper model failed to initialize during startup preload.");
+        return false;
     }
 
     public void ToggleRecording()

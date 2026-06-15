@@ -24,6 +24,9 @@ public class WebDialog : MonoBehaviour
     [Tooltip("仅用于兼容旧 Python 后端；当前新链路默认不走 WebApi。")]
     public bool enableLegacyWebApiFallback = false;
 
+    [Tooltip("优先使用新的 A/B/C 并行调度器。关闭后回退到旧 AIConversationController。")]
+    public bool useParallelOrchestrator = true;
+
     void Start()
     {
         // 保留旧代码的静态调用方式，方便 WebApi/按钮/Whisper 直接调用 WebDialog。
@@ -104,7 +107,26 @@ public class WebDialog : MonoBehaviour
             onRequestFinished?.Invoke();
         }
 
-        // 优先使用新的 AI 对话控制器：读取配置 -> 调 API -> 把回复写进 Output。
+        // 新链路：A 负责聊天，B 负责动作/控制，C 负责记忆检索。
+        if (webDialog != null && webDialog.useParallelOrchestrator)
+        {
+            if (AIParallelOrchestrator.TryAsk(
+                input,
+                onFastText: Dialog,
+                onFinalText: Dialog,
+                onComplete: _ => FinishRequestOnce(),
+                onError: error =>
+                {
+                    Dialog($"AI orchestrator failed:\n{error}");
+                    FinishRequestOnce();
+                }))
+            {
+                if (!clearAfterRead) field.text = input;
+                return;
+            }
+        }
+
+        // 旧链路：读取配置 -> 调 API -> 把回复写进 Output。保留作为重构期间的安全回退。
         if (AIConversationController.TryAsk(
             input,
             onStreamUpdate: Dialog,

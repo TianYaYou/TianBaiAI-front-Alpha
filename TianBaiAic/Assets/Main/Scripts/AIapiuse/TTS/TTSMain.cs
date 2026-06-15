@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -11,7 +12,7 @@ using UnityEngine;
 /// 职责边界：读取配置、选择本地/远端 TTS 会话、把生成结果转成 AudioClip 并交给 AudioSource 播放。
 /// 天白主链路只需要继续调用 TrySpeak/SpeakAsync，不需要关心底层是 sherpa-onnx 还是远端 URL。
 /// </summary>
-public class TTSMain : MonoBehaviour
+public class TTSMain : MonoBehaviour, IStartupReadiness
 {
     public static TTSMain Instance { get; private set; }
 
@@ -21,6 +22,13 @@ public class TTSMain : MonoBehaviour
 
     [Tooltip("配置文件不存在时自动生成模板，方便第一次运行时看到应该填写哪些字段。")]
     public bool createTemplateIfMissing = true;
+
+    [Header("Startup")]
+    [Tooltip("本地 sherpa-onnx 模式下，场景开始时就加载模型，避免第一次输出时才卡顿。")]
+    public bool preloadLocalModelOnStart = true;
+
+    [Tooltip("预加载失败时输出 warning。远端模式或 TTS 未启用时只会跳过预加载。")]
+    public bool warnIfLocalPreloadFails = true;
 
     [Header("Playback")]
     public AudioSource audioSource;
@@ -43,6 +51,8 @@ public class TTSMain : MonoBehaviour
     public string LastContent { get; private set; }
     public TTSConfig Config => _config;
     public TTSRunMode RunMode => _config != null ? _config.Mode : TTSRunMode.RemoteUrl;
+    public bool IsStartupReady { get; private set; } = true;
+    public string StartupReadinessMessage { get; private set; } = "正在加载本地 TTS 模型...";
 
     private readonly Dictionary<string, string> _emotionDescriptions = new Dictionary<string, string>
     {
@@ -59,9 +69,31 @@ public class TTSMain : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            // 启动场景会提前创建持久化 TTSMain。Main 场景里的重复组件不再重新初始化，
+            // 避免切到主界面后再次同步加载 sherpa 模型造成长时间卡顿。
+            Destroy(this);
+            return;
+        }
+
         Instance = this;
+        DontDestroyOnLoad(gameObject);
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
         if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
+    }
+
+    private IEnumerator Start()
+    {
+        if (preloadLocalModelOnStart)
+        {
+            IsStartupReady = false;
+            StartupReadinessMessage = "正在加载本地 TTS 模型...";
+            yield return null;
+            PreloadLocalModelIfConfigured();
+        }
+
+        IsStartupReady = true;
     }
 
     private void OnDestroy()
@@ -110,6 +142,11 @@ public class TTSMain : MonoBehaviour
         if (logTTS)
         {
             Debug.Log($"[TTSMain] TTS run mode switched to {runMode}.");
+        }
+
+        if (runMode == TTSRunMode.LocalSherpaOnnx && preloadLocalModelOnStart)
+        {
+            PreloadLocalModelIfConfigured();
         }
     }
 
@@ -242,6 +279,63 @@ public class TTSMain : MonoBehaviour
         {
             audioSource.Stop();
         }
+    }
+
+    /// <summary>
+    /// 如果当前配置是本地 sherpa-onnx，就立刻加载模型。
+    /// 这个方法可以给测试按钮或未来启动器调用；不会等到真正 SpeakAsync 时才加载。
+    /// </summary>
+    public bool PreloadLocalModelIfConfigured()
+    {
+        if (_config == null && !TryLoadConfig(out string reason))
+        {
+            if (logTTS)
+            {
+                Debug.Log($"[TTSMain] Skip local TTS preload: {reason}");
+            }
+
+            return false;
+        }
+
+        if (_config.Mode != TTSRunMode.LocalSherpaOnnx)
+        {
+            if (logTTS)
+            {
+                Debug.Log($"[TTSMain] Skip local TTS preload: current mode is {_config.Mode}.");
+            }
+
+            return false;
+        }
+
+        if (_localSession == null)
+        {
+            _localSession = new TTSSherpaOnnxSession(_config);
+        }
+
+        if (_localSession.IsInitialized)
+        {
+            return true;
+        }
+
+        if (logTTS)
+        {
+            Debug.Log("[TTSMain] Preloading local sherpa-onnx TTS model...");
+        }
+
+        bool ok = _localSession.Preload(error =>
+        {
+            if (warnIfLocalPreloadFails)
+            {
+                Debug.LogWarning($"[TTSMain] {error}");
+            }
+        });
+
+        if (ok && logTTS)
+        {
+            Debug.Log($"[TTSMain] Local sherpa-onnx TTS model is ready. sampleRate={_localSession.SampleRate}, speakers={_localSession.NumSpeakers}");
+        }
+
+        return ok;
     }
 
     private bool TryEnsureSession(out string reason)
